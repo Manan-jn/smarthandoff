@@ -4,3 +4,4 @@ dist/
 .smarthandoff/events.jsonl
 .smarthandoff/latest.md
 *.tsbuildinfo
+.turbo/
