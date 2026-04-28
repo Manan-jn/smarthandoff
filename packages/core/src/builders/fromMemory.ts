@@ -7,8 +7,8 @@ export async function fromMemory(
   projectRoot: string,
   _transcriptPath?: string
 ): Promise<Partial<Handoff>> {
-  // Claude Code stores auto-memory in ~/.claude/projects/<encoded-path>/memory/
-  const encoded = projectRoot.replace(/\//g, '-').replace(/^-/, '');
+  // Claude Code encodes paths: replace / and whitespace with -, keeping leading -
+  const encoded = projectRoot.replace(/[/\s]/g, '-');
   const memoryDir = path.join(os.homedir(), '.claude', 'projects', encoded, 'memory');
 
   let notes = '';
