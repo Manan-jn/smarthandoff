@@ -1,3 +1,3 @@
-// @smarthandoff/core — public API
-// Populated in subsequent tasks
-export {};
+export * from './types.js';
+export * from './schema.js';
+export * from './utils.js';
