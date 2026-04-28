@@ -1,0 +1,17 @@
+{
+  "name": "smart-handoff",
+  "version": "1.0.0",
+  "description": "Zero-friction AI session continuity. Switch tools without losing context.",
+  "skills": ["src/skills/handoff.md"],
+  "hooks": {
+    "StopFailure": {
+      "matcher": "rate_limit",
+      "command": "bash src/hooks/stopFailure.sh"
+    },
+    "PreCompact": {
+      "matcher": "auto",
+      "command": "bash src/hooks/preCompact.sh",
+      "async": true
+    }
+  }
+}
