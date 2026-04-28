@@ -1,0 +1,6 @@
+{
+  "name": "@smarthandoff/plugin-claude-code",
+  "version": "0.1.0",
+  "description": "Smart Handoff Claude Code plugin",
+  "private": true
+}

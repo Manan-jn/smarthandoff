@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.smarthandoff/cache/
+.smarthandoff/events.jsonl
+.smarthandoff/latest.md
+*.tsbuildinfo

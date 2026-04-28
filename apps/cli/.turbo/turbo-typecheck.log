@@ -1,0 +1,4 @@
+
+> @smarthandoff/cli@0.1.0 typecheck /Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli
+> tsc --noEmit
+
