@@ -1,0 +1,23 @@
+projectId: smart-handoff
+defaultTarget: claude
+collectors:
+  claudeLogs:
+    enabled: true
+  git:
+    enabled: true
+    includeDiffs: false
+  memory:
+    enabled: true
+compression:
+  defaultMode: rich
+  profiles:
+    lean:
+      budget: 4000
+    rich:
+      budget: null
+    debug:
+      budget: 100000
+policy:
+  autoSnapshotOnRateLimit: true
+  autoSnapshotOnPreCompact: true
+  minFilesChanged: 1

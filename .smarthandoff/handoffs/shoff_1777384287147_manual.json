@@ -1,0 +1,46 @@
+{
+  "id": "shoff_1777384287147_manual",
+  "projectRoot": "/Users/mananjain/Downloads/personal docs/smart-handoff",
+  "createdAt": "2026-04-28T13:51:27.147Z",
+  "createdBy": "mananjain@Manans-MacBook-Pro.local",
+  "mode": "rich",
+  "goals": [],
+  "decisions": [],
+  "filesChanged": [
+    {
+      "path": ".smarthandoff/",
+      "status": "added",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0,
+      "diff": "",
+      "testsImpacted": []
+    }
+  ],
+  "blockers": [],
+  "nextSteps": [],
+  "context": {
+    "stack": [
+      "TypeScript ^5.4.0",
+      "Node v22.19.0"
+    ],
+    "packageJson": {
+      "name": "smart-handoff",
+      "version": "",
+      "dependencies": {
+        "turbo": "^2.5.0",
+        "@changesets/cli": "^2.27.0",
+        "typescript": "^5.4.0"
+      }
+    }
+  },
+  "sources": [
+    {
+      "tool": "claude-code",
+      "collectedAt": "2026-04-28T13:51:27.145Z"
+    }
+  ],
+  "extractionConfidence": 0.65,
+  "rawTokenCount": 183
+}

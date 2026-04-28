@@ -79,21 +79,16 @@ export async function buildHandoff(
 
 async function findLatestTranscript(): Promise<string | undefined> {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+  // Claude Code encodes paths: replace / and whitespace with -
+  const encodedCwd = process.cwd().replace(/[/\s]/g, '-');
+  const projectPath = path.join(projectsDir, encodedCwd);
   try {
-    const projectDirs = await fs.readdir(projectsDir);
-    const cwd = process.cwd();
-    for (const dir of projectDirs) {
-      const decoded = dir.replace(/-/g, '/').replace(/^\//, '');
-      if (cwd.endsWith(decoded) || decoded.includes(path.basename(cwd))) {
-        const projectPath = path.join(projectsDir, dir);
-        const files = await fs.readdir(projectPath);
-        const jsonlFiles = files.filter(f => f.endsWith('.jsonl')).map(f => path.join(projectPath, f));
-        if (jsonlFiles.length === 0) continue;
-        const stats = await Promise.all(jsonlFiles.map(async f => ({ path: f, mtime: (await fs.stat(f)).mtime })));
-        stats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-        return stats[0]?.path;
-      }
-    }
+    const files = await fs.readdir(projectPath);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl')).map(f => path.join(projectPath, f));
+    if (jsonlFiles.length === 0) return undefined;
+    const stats = await Promise.all(jsonlFiles.map(async f => ({ path: f, mtime: (await fs.stat(f)).mtime })));
+    stats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+    return stats[0]?.path;
   } catch { /* no transcripts */ }
   return undefined;
 }
