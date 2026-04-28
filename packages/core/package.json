@@ -18,13 +18,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^3.23.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
-    "vitest": "^1.6.0",
     "typescript": "^5.4.0",
-    "@types/js-yaml": "^4.0.9"
+    "vitest": "^1.6.0"
   }
 }
