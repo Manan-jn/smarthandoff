@@ -1,3 +1,13 @@
+// Strip Claude Code system tags injected into user messages
+export function stripSystemTags(text: string): string {
+  return text
+    .replace(/<ide_opened_file>[\s\S]*?<\/ide_opened_file>/g, '')
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, '')
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
+    .trim();
+}
+
 export function estimateTokens(text: string): number {
   // ~4 chars per token approximation
   return Math.ceil(text.length / 4);
