@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import type { Handoff, HandoffGoal, HandoffDecision, HandoffBlocker, HandoffFileChange, HandoffNextStep } from '../types.js';
-import { extractTitle, extractText } from '../utils.js';
+import { extractTitle, extractText, stripSystemTags } from '../utils.js';
 import { stripNoise, type ClaudeLogEvent, type ContentBlock } from '../compress/stripNoise.js';
 
 export async function fromClaudeLogs(
@@ -32,7 +32,7 @@ export async function fromClaudeLogs(
   // Extract goal from first user message
   const firstUserEvent = limited.find(e => e.type === 'user');
   const firstContent = firstUserEvent?.message?.content;
-  const firstText = extractText(firstContent);
+  const firstText = stripSystemTags(extractText(firstContent));
 
   const goal: HandoffGoal = {
     id: 'goal_1',
@@ -70,7 +70,7 @@ export async function fromClaudeLogs(
   const lastUserEvent = [...limited].reverse().find(e => e.type === 'user');
   const lastAssistantEvent = [...limited].reverse().find(e => e.type === 'assistant');
 
-  const lastUserText = extractText(lastUserEvent?.message?.content);
+  const lastUserText = stripSystemTags(extractText(lastUserEvent?.message?.content));
   const lastAssistantText = extractText(lastAssistantEvent?.message?.content);
 
   const blockers: HandoffBlocker[] = [];
