@@ -39,8 +39,9 @@ export async function fromGit(
     .filter(Boolean)
     .filter(line => {
       const filePath = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
-      // Exclude handoff artifacts — they're tool output, not source changes
-      return !filePath.match(/\.?smarthandoff\//);
+      if (filePath.match(/\.?smarthandoff\//)) return false;
+      if (/^(GEMINI|AGENTS|cursor-rules|chatgpt-system)\./.test(filePath.split('/').pop() ?? '')) return false;
+      return true;
     })
     .map(line => {
       const statusCode = line.slice(0, 2).trim();

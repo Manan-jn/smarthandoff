@@ -27,7 +27,7 @@ export async function buildHandoff(
   const partials: Partial<Handoff>[] = [];
 
   if (config.collectors.claudeLogs.enabled && transcriptPath) {
-    partials.push(await fromClaudeLogs(transcriptPath));
+    partials.push(await fromClaudeLogs(transcriptPath, { projectRoot: process.cwd() }));
   }
 
   if (config.collectors.git.enabled) {

@@ -3,11 +3,54 @@ import type { Handoff, HandoffGoal, HandoffDecision, HandoffBlocker, HandoffFile
 import { extractTitle, extractText, stripSystemTags } from '../utils.js';
 import { stripNoise, type ClaudeLogEvent, type ContentBlock } from '../compress/stripNoise.js';
 
+// Generated adapter output files that should not appear in filesChanged
+const GENERATED_FILENAMES = new Set(['GEMINI.md', 'AGENTS.md', 'cursor-rules.mdc', 'chatgpt-system.md']);
+
+function isInternalPath(filePath: string): boolean {
+  if (filePath.includes('/.claude/')) return true;
+  if (filePath.match(/\.?smarthandoff\//)) return true;
+  if (GENERATED_FILENAMES.has(filePath.split('/').pop() ?? '')) return true;
+  return false;
+}
+
+function relativizeAndFilter(filePath: string, projectRoot?: string): string | null {
+  if (isInternalPath(filePath)) return null;
+  if (projectRoot && filePath.startsWith(projectRoot + '/')) {
+    return filePath.slice(projectRoot.length + 1);
+  }
+  return filePath;
+}
+
+function cleanSlice(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const truncated = text.slice(0, maxChars);
+
+  // Cut before any code block that starts in the slice
+  const codeBlockIdx = truncated.indexOf('```');
+  if (codeBlockIdx > maxChars * 0.3) {
+    const beforeCode = truncated.slice(0, codeBlockIdx);
+    const paraBreak = beforeCode.lastIndexOf('\n\n');
+    if (paraBreak > 0) return beforeCode.slice(0, paraBreak).trim();
+    return beforeCode.trim();
+  }
+
+  // Prefer paragraph break
+  const paraBreak = truncated.lastIndexOf('\n\n');
+  if (paraBreak > maxChars * 0.5) return truncated.slice(0, paraBreak).trim();
+
+  // Fall back to sentence end
+  const lastPeriod = truncated.search(/[.!?][^.!?]*$/);
+  if (lastPeriod > maxChars * 0.5) return truncated.slice(0, lastPeriod + 1).trim();
+
+  return truncated.trim();
+}
+
 export async function fromClaudeLogs(
   transcriptPath: string,
   options: {
     maxMessages?: number;
     includeThinking?: boolean;
+    projectRoot?: string;
   } = {}
 ): Promise<Partial<Handoff>> {
   let raw: string;
@@ -37,7 +80,7 @@ export async function fromClaudeLogs(
   const goal: HandoffGoal = {
     id: 'goal_1',
     title: extractTitle(firstText),
-    description: firstText.slice(0, 2000),
+    description: cleanSlice(firstText, 2000),
     status: 'in_progress',
     sourceMessageIndex: 0,
   };
@@ -55,16 +98,19 @@ export async function fromClaudeLogs(
       if (block.type !== 'tool_use' || !WRITE_TOOLS.has(block.name ?? '')) continue;
       const input = block.input as { file_path?: string; path?: string } | undefined;
       const filePath = input?.file_path || input?.path;
-      if (filePath && !seenPaths.has(filePath) && !filePath.match(/\.?smarthandoff\//)) {
-        seenPaths.add(filePath);
-        filesChanged.push({
-          path: filePath,
-          status: 'modified',
-          summary: '',
-          importance: 'medium',
-          linesAdded: 0,
-          linesRemoved: 0,
-        });
+      if (filePath && !seenPaths.has(filePath)) {
+        const rel = relativizeAndFilter(filePath, options.projectRoot);
+        if (rel !== null) {
+          seenPaths.add(filePath);
+          filesChanged.push({
+            path: rel,
+            status: 'modified',
+            summary: '',
+            importance: 'medium',
+            linesAdded: 0,
+            linesRemoved: 0,
+          });
+        }
       }
     }
   }
