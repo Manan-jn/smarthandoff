@@ -42,27 +42,30 @@ export async function fromClaudeLogs(
     sourceMessageIndex: 0,
   };
 
-  // Extract file changes from Write/Edit tool calls
+  // Extract file changes from Write/Edit tool calls embedded in assistant events
   const filesChanged: HandoffFileChange[] = [];
   const seenPaths = new Set<string>();
+  const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
-  const toolUseEvents = limited.filter(e => e.type === 'tool_use');
-  for (const event of toolUseEvents) {
+  for (const event of limited) {
+    if (event.type !== 'assistant') continue;
     const blocks = event.message?.content as ContentBlock[] | undefined;
-    const toolBlock = blocks?.find(b => b.type === 'tool_use');
-    if (!toolBlock?.input) continue;
-    const input = toolBlock.input as { file_path?: string; new_content?: string; path?: string };
-    const filePath = input.file_path || input.path;
-    if (filePath && !seenPaths.has(filePath)) {
-      seenPaths.add(filePath);
-      filesChanged.push({
-        path: filePath,
-        status: 'modified',
-        summary: '',
-        importance: 'medium',
-        linesAdded: 0,
-        linesRemoved: 0,
-      });
+    if (!Array.isArray(blocks)) continue;
+    for (const block of blocks) {
+      if (block.type !== 'tool_use' || !WRITE_TOOLS.has(block.name ?? '')) continue;
+      const input = block.input as { file_path?: string; path?: string } | undefined;
+      const filePath = input?.file_path || input?.path;
+      if (filePath && !seenPaths.has(filePath) && !filePath.match(/\.?smarthandoff\//)) {
+        seenPaths.add(filePath);
+        filesChanged.push({
+          path: filePath,
+          status: 'modified',
+          summary: '',
+          importance: 'medium',
+          linesAdded: 0,
+          linesRemoved: 0,
+        });
+      }
     }
   }
 
@@ -116,30 +119,50 @@ export async function fromClaudeLogs(
 }
 
 const DECISION_PATTERNS = [
-  /\b(decided|choosing|chose|going with|we('ll| will) use)\b/i,
-  /\b(not using|avoiding|rejected|instead of|rather than)\b/i,
-  /\b(the reason|because|rationale|trade-?off)\b/i,
+  /\b(decided|choosing|chose|going with|we('ll| will) use|I('ll| will) use)\b/i,
+  /\b(not using|avoiding|rejected|instead of|rather than|dropped|removed)\b/i,
+  /\b(the reason is|rationale|trade-?off|the fix is|root cause)\b/i,
+];
+
+// Sentences that are clearly not decisions — meta-commentary, fragments, questions
+const DECISION_NOISE = [
+  /^[),"'\s]/,                          // starts with fragment punctuation
+  /\?$/,                                 // questions
+  /^(The|This|That|It|There|Here)\s+(is|are|was|were|will|would|can|could|should|has|have)\b/i, // descriptive observations
+  /\bthe handoff\b/i,                   // meta-commentary about the handoff tool itself
+  /\bextract(or|ion|ing|ed)\b/i,        // talking about extraction logic
+  /\btoken budget\b/i,                  // token budget explanations
 ];
 
 function extractDecisions(events: ClaudeLogEvent[]): HandoffDecision[] {
   const decisions: HandoffDecision[] = [];
+  const seen = new Set<string>();
   let id = 0;
 
   for (const event of events) {
     if (event.type !== 'assistant') continue;
     const text = extractText(event.message?.content);
-    const sentences = text.split(/[.!?]+/);
+    const sentences = text.split(/(?<=[.!?])\s+/);
 
     for (const sentence of sentences) {
-      if (DECISION_PATTERNS.some(p => p.test(sentence)) && sentence.trim().length > 30) {
-        decisions.push({
-          id: `decision_${++id}`,
-          summary: sentence.trim().slice(0, 200),
-          rationale: '',
-          timestamp: event.timestamp || new Date().toISOString(),
-          confidence: 0.7,
-        });
-      }
+      const s = sentence.trim();
+      if (s.length < 50 || s.length > 300) continue;
+      if (!DECISION_PATTERNS.some(p => p.test(s))) continue;
+      if (DECISION_NOISE.some(p => p.test(s))) continue;
+      // Require sentence starts with capital letter (complete sentence, not fragment)
+      if (!/^[A-Z"']/.test(s)) continue;
+
+      const key = s.slice(0, 60).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      decisions.push({
+        id: `decision_${++id}`,
+        summary: s.slice(0, 200),
+        rationale: '',
+        timestamp: event.timestamp || new Date().toISOString(),
+        confidence: 0.7,
+      });
     }
   }
 
@@ -150,21 +173,17 @@ function extractBlocker(lastUser: string, lastAssistant: string): string {
   const errorPatterns = [
     /error:/i, /failed/i, /cannot/i, /unable to/i, /❌/,
     /test.*fail/i, /compilation error/i, /type error/i,
+    /\bstuck\b/i, /\bblocked\b/i, /\bbreaking\b/i, /exception:/i,
   ];
 
   const combined = `${lastUser} ${lastAssistant}`;
   const hasError = errorPatterns.some(p => p.test(combined));
 
-  if (hasError) {
-    const shorter = lastAssistant.length > 0 ? lastAssistant : lastUser;
-    return shorter.slice(0, 500).trim();
-  }
+  if (!hasError) return '';
 
-  if (lastUser.length > 0) {
-    return lastUser.slice(0, 300).trim();
-  }
-
-  return '';
+  // Prefer assistant text (has the error detail), fall back to user
+  const source = lastAssistant.length > 50 ? lastAssistant : lastUser;
+  return source.slice(0, 500).trim();
 }
 
 function extractErrorMessage(text: string): string | undefined {

@@ -32,7 +32,10 @@ export function stripNoise(events: ClaudeLogEvent[]): ClaudeLogEvent[] {
       const content = event.message?.content;
       if (typeof content === 'string') return true;
       if (Array.isArray(content)) {
-        return content.some(b => b.type === 'text' && b.text?.trim());
+        // Keep if has text content OR has a Write/Edit tool call
+        const hasText = content.some(b => b.type === 'text' && b.text?.trim());
+        const hasWrite = content.some(b => b.type === 'tool_use' && WRITE_TOOLS.has(b.name ?? ''));
+        return hasText || hasWrite;
       }
       return false;
     }

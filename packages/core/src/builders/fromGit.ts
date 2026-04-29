@@ -13,6 +13,17 @@ export async function fromGit(
     return { filesChanged: [] };
   }
 
+  let branch = 'unknown';
+  try {
+    branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf8' }).trim();
+  } catch { /* ignore */ }
+
+  let recentCommitLines: string[] = [];
+  try {
+    recentCommitLines = execSync('git log --oneline -10', { cwd: repoPath, encoding: 'utf8' })
+      .trim().split('\n').filter(Boolean);
+  } catch { /* ignore */ }
+
   let statusOutput: string;
   try {
     statusOutput = execSync('git status --porcelain=v1', {
@@ -26,6 +37,11 @@ export async function fromGit(
     .trim()
     .split('\n')
     .filter(Boolean)
+    .filter(line => {
+      const filePath = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
+      // Exclude handoff artifacts — they're tool output, not source changes
+      return !filePath.match(/\.?smarthandoff\//);
+    })
     .map(line => {
       const statusCode = line.slice(0, 2).trim();
       const filePath = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
@@ -69,8 +85,16 @@ export async function fromGit(
     file.testsImpacted = findImpactedTests(file.path, repoPath);
   }
 
+  const gitSummary = [
+    `Git branch: ${branch}`,
+    recentCommitLines.length > 0
+      ? `Recent commits:\n${recentCommitLines.map(l => `  ${l}`).join('\n')}`
+      : '',
+  ].filter(Boolean).join('\n');
+
   return {
     filesChanged,
+    notes: gitSummary,
     sources: [{
       tool: 'claude-code',
       collectedAt: new Date().toISOString(),
