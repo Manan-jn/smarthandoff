@@ -30,7 +30,7 @@ export const snapshotCommand = new Command('snapshot')
     const partials: Partial<Handoff>[] = [];
 
     if (config.collectors.claudeLogs.enabled && transcriptPath) {
-      const logPartial = await fromClaudeLogs(transcriptPath);
+      const logPartial = await fromClaudeLogs(transcriptPath, { projectRoot: process.cwd() });
       partials.push(logPartial);
     }
 

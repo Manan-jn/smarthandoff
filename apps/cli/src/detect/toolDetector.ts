@@ -21,7 +21,7 @@ export async function detectTools(): Promise<string[]> {
 
 export async function autoDetectTarget(): Promise<string> {
   const available = await detectTools();
-  const priority = ['gemini', 'codex'];
+  const priority = ['gemini', 'codex', 'claude'];
   for (const tool of priority) {
     if (available.includes(tool)) return tool;
   }
