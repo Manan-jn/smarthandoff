@@ -27,10 +27,13 @@ export function allocateBudget(
 ): SectionBudgets {
   const totalBudget = overrideBudget ?? TOOL_BUDGETS[target];
 
+  // Scale fixed sections with budget — default targets have small budgets so caps are tight,
+  // but when a large override is passed the full content should flow through untruncated.
+  const scale = Math.max(1, totalBudget / 10_000);
   const FIXED = {
-    goal:      400,
-    blockers:  300,
-    nextSteps: 200,
+    goal:      Math.floor(400 * scale),
+    blockers:  Math.floor(300 * scale),
+    nextSteps: Math.floor(200 * scale),
   };
   const fixedTotal = FIXED.goal + FIXED.blockers + FIXED.nextSteps;
   const remaining = totalBudget - fixedTotal;
