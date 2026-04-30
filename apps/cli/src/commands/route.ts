@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { promises as fs } from 'node:fs';
-import { toAdapter, validateHandoff, type TargetTool, type Handoff, TOOL_BUDGETS } from '@smarthandoff/core';
+import { toAdapter, validateHandoff, type TargetTool, type Handoff, TOOL_BUDGETS, summarize } from '@smarthandoff/core';
 import { loadConfig } from '../config.js';
 import { deliver } from '../deliver/index.js';
 import { autoDetectTarget, detectTools } from '../detect/toolDetector.js';
@@ -17,6 +17,8 @@ export const routeCommand = new Command('route')
   .option('--preview', 'preview briefing without delivering')
   .option('--trigger <trigger>', 'trigger source (manual|rate_limit|precompact)', 'manual')
   .option('--session-id <id>', 'specific session to route from')
+  .option('--summarize', 'LLM summarization pass for higher-quality handoff (uses claude CLI)')
+  .option('--summarize-model <model>', 'model for summarization pass', 'sonnet')
   .action(async (options) => {
     const config = await loadConfig();
 
@@ -47,13 +49,23 @@ export const routeCommand = new Command('route')
     if (handoff.goals[0]) console.log(`  ✓ Goal: ${handoff.goals[0].title}`);
     if (handoff.blockers[0]) console.log(`  ✓ Blocker: ${handoff.blockers[0].description.slice(0, 60)}`);
 
+    // Optional LLM summarization pass
+    let finalHandoff = handoff;
+    if (options.summarize) {
+      console.log(`\n  Running LLM summarization (${options.summarizeModel as string})...`);
+      finalHandoff = await summarize(handoff, { model: options.summarizeModel as string });
+      if (finalHandoff !== handoff) {
+        console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
+      }
+    }
+
     // Save snapshot
     await fs.mkdir('.smarthandoff/handoffs', { recursive: true });
-    await fs.writeFile(`.smarthandoff/handoffs/${handoff.id}.json`, JSON.stringify(handoff, null, 2));
-    await fs.writeFile('.smarthandoff/latest.json', JSON.stringify(handoff, null, 2));
+    await fs.writeFile(`.smarthandoff/handoffs/${finalHandoff.id}.json`, JSON.stringify(finalHandoff, null, 2));
+    await fs.writeFile('.smarthandoff/latest.json', JSON.stringify(finalHandoff, null, 2));
 
     // Generate adapter output
-    const output = toAdapter(handoff, target, {
+    const output = toAdapter(finalHandoff, target, {
       tokenBudget: options.budget as number | undefined,
       mode,
     });
@@ -76,7 +88,7 @@ export const routeCommand = new Command('route')
 
     await emitEvent({
       type: 'ROUTE_TRIGGERED',
-      handoffId: handoff.id,
+      handoffId: finalHandoff.id,
       targetTool: target,
       trigger: options.trigger as string,
       tokenCount: output.tokenCount,
