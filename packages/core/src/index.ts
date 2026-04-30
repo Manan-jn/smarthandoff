@@ -12,3 +12,4 @@ export * from './compress/compressDiffs.js';
 export * from './compress/compress.js';
 export * from './adapters/index.js';
 export * from './policy/evaluator.js';
+export { summarize, type SummarizeOptions } from './enhance/summarize.js';

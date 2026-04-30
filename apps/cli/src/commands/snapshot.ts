@@ -8,6 +8,7 @@ import {
   fromMemory,
   fromManual,
   merge,
+  summarize,
   type Handoff,
 } from '@smarthandoff/core';
 import { loadConfig } from '../config.js';
@@ -20,6 +21,8 @@ export const snapshotCommand = new Command('snapshot')
   .option('--note <text>', 'add a manual note to the handoff')
   .option('--source <source>', 'trigger source (manual|precompact|stop)', 'manual')
   .option('--print', 'print handoff summary to stdout')
+  .option('--summarize', 'LLM summarization pass for higher-quality handoff (uses claude CLI)')
+  .option('--summarize-model <model>', 'model for summarization pass', 'sonnet')
   .action(async (options) => {
     const config = await loadConfig();
 
@@ -84,12 +87,21 @@ export const snapshotCommand = new Command('snapshot')
       mode,
     });
 
-    await fs.mkdir('.smarthandoff/handoffs', { recursive: true });
-    const savePath = `.smarthandoff/handoffs/${handoff.id}.json`;
-    await fs.writeFile(savePath, JSON.stringify(handoff, null, 2));
-    await fs.writeFile('.smarthandoff/latest.json', JSON.stringify(handoff, null, 2));
+    let finalHandoff = handoff;
+    if (options.summarize) {
+      console.log('  Running LLM summarization...');
+      finalHandoff = await summarize(handoff, { model: options.summarizeModel as string });
+      if (finalHandoff !== handoff) {
+        console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
+      }
+    }
 
-    console.log(`✓ Handoff created: ${handoff.id}`);
+    await fs.mkdir('.smarthandoff/handoffs', { recursive: true });
+    const savePath = `.smarthandoff/handoffs/${finalHandoff.id}.json`;
+    await fs.writeFile(savePath, JSON.stringify(finalHandoff, null, 2));
+    await fs.writeFile('.smarthandoff/latest.json', JSON.stringify(finalHandoff, null, 2));
+
+    console.log(`✓ Handoff created: ${finalHandoff.id}`);
     console.log(`  Goals:     ${handoff.goals.length}`);
     console.log(`  Decisions: ${handoff.decisions.length}`);
     console.log(`  Files:     ${handoff.filesChanged.length}`);
@@ -98,7 +110,7 @@ export const snapshotCommand = new Command('snapshot')
 
     if (options.print) {
       console.log('\n--- HANDOFF SUMMARY ---');
-      console.log(formatHandoffSummary(handoff));
+      console.log(formatHandoffSummary(finalHandoff));
     }
   });
 

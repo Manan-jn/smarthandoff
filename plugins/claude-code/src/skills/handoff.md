@@ -4,14 +4,22 @@ description: Generate a Smart Handoff briefing to continue this session in anoth
   Use when approaching rate limits, context window limits, or wanting to switch tools.
   Supports: gemini, codex, cursor, claude, chatgpt
 user_invocable: true
-args: "[--to <tool>] [--mode lean|rich] [--preview]"
+args: "[--to <tool>] [--mode lean|rich] [--preview] [--summarize]"
 ---
 
 Generate a Smart Handoff briefing for continuing this session in another AI tool.
 
 ## Step 1: Read the current conversation
 
-Scan this entire session for:
+**If `--summarize` is passed:** Do not use pattern matching. Read the full conversation with deep understanding. Write the handoff fields as you would write a PR description — from comprehension, not extraction rules.
+- goal.title: what would you name a PR for this work? Under 80 chars.
+- goal.description: 3–5 sentences covering what was built, the approach, and current status including the "why"
+- decisions: real choices including implicit ones ("tried X, switched to Y because Z"). Include technical trade-offs. Remove meta-commentary. Max 8.
+- blockers: the actual unresolved problem, not just the last message. Empty array if the session ended cleanly.
+- filesChanged: for each file, write what changed and why — not just what the file is
+- nextSteps: specific and ordered. Name the file, function, or command.
+
+**Otherwise (default):** Scan this entire session for:
 - The original user goal (first substantial message they sent)
 - All files written or edited (look at Write/Edit/MultiEdit tool calls — get the file paths)
 - The current blocker or unresolved issue (last user message + any error in last assistant message)
