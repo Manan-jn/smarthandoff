@@ -1,0 +1,227 @@
+{
+  "id": "shoff_1777462113157_manual",
+  "projectRoot": "/Users/mananjain/Downloads/personal docs/smart-handoff",
+  "createdAt": "2026-04-29T11:28:33.157Z",
+  "createdBy": "mananjain@Manans-MacBook-Pro.local",
+  "mode": "lean",
+  "goals": [
+    {
+      "id": "goal_1",
+      "title": "understand the complete plan first, and make an understanding",
+      "description": "understand the complete plan first, and make an understanding \n\nalong with my question was:\ndoes the above uses LLM for generating context and handoff, if yes, need to use the claude code login auth only, as not supporting claude api right now\n\nand its answer:\nLooking at the implementation plan, yes — there are two places where LLMs are used:\n\n**1. `summarize.ts` — optional compression step**\nThe plan mentions using Claude API (Haiku) to summarize long text blocks and compress diffs when they exceed the token budget. This was marked as \"pluggable\" but defaulted to the Anthropic API.\n\n**2. `/handoff` Claude Code skill**\nThe skill runs *inside* Claude Code and asks Claude to read the current session and generate the briefing. This one already uses Claude Code's auth — it's just a skill file, no API calls.\n\n**The good news: most extraction is already deterministic.**\n\nLooking at the actual code in the plan:\n\n- `fromClaudeLogs.ts` — pure JSONL parsing, zero LLM\n- `fromGit.ts` — shell commands, zero LLM\n- `merge.ts` — pure TypeScript, zero LLM\n- `budgetAllocator.ts` — math, zero LLM\n- `stripNoise.ts` — event type filtering, zero LLM\n- All 5 adapters — string templates, zero LLM\n- Goal extraction — `messages[0].content`, deterministic\n- Blocker extraction — last user + last assistant message, deterministic\n- File changes — parse Write/Edit tool calls, deterministic\n- Decision extraction — regex pattern matching, deterministic\n\n**The only real LLM touch point is `summarize.ts`**, which only fires when a section *exceeds* its token budget and needs trimming. For most normal sessions this never triggers — the deterministic extraction already produces output well within budget.\n\n**Here's what to change:**\n\nRemove `summarize.ts` from the v1 scope entirely. Replace it with deterministic truncation:\n\n```typescript\n// packages/core/src/compress/summarize.ts\n// v1: pure truncation, no LLM needed\n\nexport function truncateToTokenBudget(text: string, budget: number): string {\n  const",
+      "status": "in_progress",
+      "sourceMessageIndex": 0
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision_1",
+      "summary": "The root cause: Claude encodes paths by replacing both `/` **and spaces** with `-`, but our code only replaces `/`.",
+      "rationale": "",
+      "timestamp": "2026-04-28T13:54:23.001Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_2",
+      "summary": "The truncation is intentional design — in a real handoff, the goal should be concise (~400 tokens ≈ 300 words) rather than a verbatim copy of the first user message.",
+      "rationale": "",
+      "timestamp": "2026-04-28T14:05:11.384Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_3",
+      "summary": "FILES CHANGED (all wrong)** — Showing `.smarthandoff/handoffs/*.json` (the snapshot files themselves from `git status`) instead of the actual source files edited.",
+      "rationale": "",
+      "timestamp": "2026-04-29T10:50:30.655Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_4",
+      "summary": "Summary of what changed and why:\n\n**Root cause found:** The JSONL format was never what the code assumed.",
+      "rationale": "",
+      "timestamp": "2026-04-29T11:08:55.830Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_5",
+      "summary": "A better signal: look for bullet points in assistant responses that list decisions, or assistant responses that start with \"I decided / We chose / Going with X because\".",
+      "rationale": "",
+      "timestamp": "2026-04-29T11:10:18.306Z",
+      "confidence": 0.7
+    }
+  ],
+  "filesChanged": [
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/src/detect/toolDetector.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/src/commands/init.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/src/commands/snapshot.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/src/commands/resume.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/src/index.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/package.json",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/README.md",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/.claude/projects/-Users-mananjain-Downloads-personal-docs-smart-handoff/memory/project_milestone1_complete.md",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/.claude/projects/-Users-mananjain-Downloads-personal-docs-smart-handoff/memory/MEMORY.md",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/builders/fromMemory.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/apps/cli/src/commands/_buildHandoff.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/utils.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/builders/fromClaudeLogs.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/builders/fromGit.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/__tests__/fixtures/sample-session.jsonl",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/compress/stripNoise.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "/Users/mananjain/Downloads/personal docs/smart-handoff/packages/core/src/compress/budgetAllocator.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 0,
+      "linesRemoved": 0
+    },
+    {
+      "path": "GEMINI.md",
+      "status": "added",
+      "summary": "",
+      "importance": "low",
+      "linesAdded": 0,
+      "linesRemoved": 0,
+      "testsImpacted": []
+    }
+  ],
+  "blockers": [],
+  "nextSteps": [],
+  "context": {
+    "stack": [
+      "TypeScript ^5.4.0",
+      "Node v22.19.0"
+    ],
+    "packageJson": {
+      "name": "smart-handoff",
+      "version": "",
+      "dependencies": {
+        "turbo": "^2.5.0",
+        "@changesets/cli": "^2.27.0",
+        "typescript": "^5.4.0"
+      }
+    }
+  },
+  "sources": [
+    {
+      "tool": "claude-code",
+      "transcriptPath": "/Users/mananjain/.claude/projects/-Users-mananjain-Downloads-personal-docs-smart-handoff/af52048f-f300-4054-a5e0-ce680fba3d65.jsonl",
+      "collectedAt": "2026-04-29T11:28:33.088Z"
+    }
+  ],
+  "extractionConfidence": 0.7250000000000001,
+  "rawTokenCount": 2884,
+  "notes": "Git branch: feature/milestone-1-core\nRecent commits:\n  8724146 fix(core): scale fixed section budgets proportionally with total budget\n  13f7652 fix(core): correct JSONL extraction — tool calls are in assistant events, not separate type\n  ada2ec2 fix: strip <ide_opened_file> and system tags from goal/blocker extraction\n  afbea53 fix: Claude path encoding — replace / and whitespace with - to match Claude Code's project dir naming\n  e6acf2a chore: fix CLI passWithNoTests, add README, smoke test verified\n  bbf1047 feat(plugin): Claude Code plugin — /handoff skill + StopFailure + PreCompact hooks\n  9e0b2fa feat(cli): route, analyze, list commands + analytics + policy engine\n  d2b92e9 feat(core): add gemini, codex, cursor, chatgpt adapters\n  7a45e67 test(core): unit tests for stripNoise, fromClaudeLogs, merge, budgetAllocator, adapters\n  76b40c4 feat(cli): init, snapshot, resume commands + deliver + tool detector\n\nMilestone 1 (and effectively all 4 milestones) of smart-handoff are implemented on branch `feature/milestone-1-core`. 10 git commits, 11 source files in core, 8 CLI files, Claude Code plugin.\n\n**Why:** User wanted the full plan implemented with zero LLM calls (no summarize.ts — deterministic truncation only).\n\n**How to apply:** Next session should start with `superpowers:finishing-a-development-branch` to decide on merge/PR, or continue with publishing to npm.\n\n## What's implemented\n\n### `@smarthandoff/core` (packages/core)\n- `types.ts` — full Handoff schema with all interfaces\n- `schema.ts` — Zod validators\n- `utils.ts` — estimateTokens, truncateToTokenBudget, truncateDiff, extractText\n- `builders/fromClaudeLogs.ts` — JSONL parser, extracts goal/files/blocker/decisions\n- `builders/fromGit.ts` — git status + diff stats + importance scoring\n- `builders/fromMemory.ts` — reads ~/.claude/projects/.../memory/\n- `builders/fromManual.ts` — manual note/goal/blocker injection\n- `builders/merge.ts` — merges Partial<Handoff>[] with deduplication\n- `compress/stripNoise.ts` — filters 85% noise from JSONL (keeps Write/Edit, user, assistant)\n- `compress/budgetAllocator.ts` — per-tool token budgets (gemini 50K, codex 8K, etc.)\n- `compress/compress.ts` — applies budgets, sorts by importance/confidence\n- `compress/compressDiffs.ts` — deterministic truncation (NO LLM)\n- `adapters/claude.ts` — clipboard, shortest format, no CLAUDE.md\n- `adapters/gemini.ts` — pipe, 50K, writes GEMINI.md, includes CLAUDE.md\n- `adapters/codex.ts` — pipe, 8K, patches AGENTS.md, TASK:/FILE:/FAILING: format\n- `adapters/cursor.ts` — file-write, MDC with alwaysApply, @file references\n- `adapters/chatgpt.ts` — two-part-clipboard, system prompt + first message\n- `adapters/generic.ts` — clipboard, universal markdown\n- `policy/evaluator.ts` — evaluatePolicy() for smart trigger decisions\n- 42 unit tests passing\n\n### `@smarthandoff/cli` (apps/cli)\n- `commands/init.ts` — creates .smarthandoff/, registers hooks in ~/.claude/settings.json\n- `commands/snapshot.ts` — builds handoff from all sources, saves JSON\n- `commands/resume.ts` — loads handoff, runs adapter, delivers\n- `commands/route.ts` — one-shot snapshot+deliver\n- `commands/analyze.ts` — token allocation bar chart + confidence scores\n- `commands/list.ts` — lists saved handoffs\n- `commands/_buildHandoff.ts` — shared handoff builder\n- `deliver/index.ts` — pipe/clipboard/file-write/two-part delivery\n- `detect/toolDetector.ts` — which tools are in PATH\n- `analytics.ts` — emits events to .smarthandoff/events.jsonl\n\n### Claude Code plugin (plugins/claude-code)\n- `skills/handoff.md` — /handoff slash command (reads own context, no API)\n- `hooks/stopFailure.sh` — auto-routes on rate limit\n- `hooks/preCompact.sh` — async snapshot on context window fill\n\n## Key decision\nZero LLM calls in v1. `summarize.ts` removed from scope. `compressDiffs.ts` uses deterministic truncation. The /handoff skill uses Claude Code's existing auth (reads own context window)."
+}

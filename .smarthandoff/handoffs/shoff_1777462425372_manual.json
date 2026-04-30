@@ -1,7 +1,7 @@
 {
-  "id": "shoff_1777462435508_manual",
+  "id": "shoff_1777462425372_manual",
   "projectRoot": "/Users/mananjain/Downloads/personal docs/smart-handoff",
-  "createdAt": "2026-04-29T11:33:55.508Z",
+  "createdAt": "2026-04-29T11:33:45.372Z",
   "createdBy": "mananjain@Manans-MacBook-Pro.local",
   "mode": "rich",
   "goals": [
@@ -205,7 +205,7 @@
     {
       "tool": "claude-code",
       "transcriptPath": "/Users/mananjain/.claude/projects/-Users-mananjain-Downloads-personal-docs-smart-handoff/af52048f-f300-4054-a5e0-ce680fba3d65.jsonl",
-      "collectedAt": "2026-04-29T11:33:55.283Z"
+      "collectedAt": "2026-04-29T11:33:45.153Z"
     }
   ],
   "extractionConfidence": 0.7250000000000001,

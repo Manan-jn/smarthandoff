@@ -1,0 +1,81 @@
+{
+  "id": "shoff_1777385087720_manual",
+  "projectRoot": "/Users/mananjain/Downloads/personal docs/smart-handoff",
+  "createdAt": "2026-04-28T14:04:47.720Z",
+  "createdBy": "mananjain@Manans-MacBook-Pro.local",
+  "mode": "rich",
+  "goals": [
+    {
+      "id": "goal_1",
+      "title": "understand the complete plan first, and make an understanding",
+      "description": "understand the complete plan first, and make an understanding \n\nalong with my question was:\ndoes the above uses LLM for generating context and handoff, if yes, need to use the claude code login auth only, as not supporting claude api right now\n\nand its answer:\nLooking at the implementation plan, yes — there are two places where LLMs are used:\n\n**1. `summarize.ts` — optional compression step**\nThe plan mentions using Claude API (Haiku) to summarize long text blocks and compress diffs when they exceed the token budget. This was marked as \"pluggable\" but defaulted to the Anthropic API.\n\n**2. `/handoff` Claude Code skill**\nThe skill runs *inside* Claude Code and asks Claude to read the current session and generate the briefing. This one already uses Claude Code's auth — it's just a skill file, no API calls.\n\n**The good news: most extraction is already deterministic.**\n\nLooking at the actual code in the plan:\n\n- `fromClaudeLogs.ts` — pure JSONL parsing, zero LLM\n- `fromGit.ts` — shell commands, zero LLM\n- `merge.ts` — pure TypeScript, zero LLM\n- `budgetAllocator.ts` — math, zero LLM\n- `stripNoise.ts` — event type filtering, zero LLM\n- All 5 adapters — string templates, zero LLM\n- Goal extraction — `messages[0].content`, deterministic\n- Blocker extraction — last user + last assistant message, deterministic\n- File changes — parse Write/Edit tool calls, deterministic\n- Decision extraction — regex pattern matching, deterministic\n\n**The only real LLM touch point is `summarize.ts`**, which only fires when a section *exceeds* its token budget and needs trimming. For most normal sessions this never triggers — the deterministic extraction already produces output well within budget.\n\n**Here's what to change:**\n\nRemove `summarize.ts` from the v1 scope entirely. Replace it with deterministic truncation:\n\n```typescript\n// packages/core/src/compress/summarize.ts\n// v1: pure truncation, no LLM needed\n\nexport function truncateToTokenBudget(text: string, budget: number): string {\n  const",
+      "status": "in_progress",
+      "sourceMessageIndex": 0
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision_1",
+      "summary": "), any blocker from the last message, and decisions made (zero LLM calls, truncation instead of summarize",
+      "rationale": "",
+      "timestamp": "2026-04-28T11:05:47.918Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_2",
+      "summary": "The problem is clear: `fromClaudeLogs` isn't finding the transcript because the path encoding is wrong",
+      "rationale": "",
+      "timestamp": "2026-04-28T13:53:46.737Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_3",
+      "summary": "The goal text is a bit noisy because the transcript includes `<ide_opened_file>` system tags — that's expected and a minor quality issue with deterministic extraction",
+      "rationale": "",
+      "timestamp": "2026-04-28T13:55:52.743Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_4",
+      "summary": "json` appear because those JSON files were just created by git — they show as \"added\" in `git status`",
+      "rationale": "",
+      "timestamp": "2026-04-28T13:56:26.842Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_5",
+      "summary": "json` noise in files changed is because those JSON files appeared in `git status` — not from the transcript",
+      "rationale": "",
+      "timestamp": "2026-04-28T14:02:25.698Z",
+      "confidence": 0.7
+    }
+  ],
+  "filesChanged": [],
+  "blockers": [],
+  "nextSteps": [],
+  "context": {
+    "stack": [
+      "TypeScript ^5.4.0",
+      "Node v22.19.0"
+    ],
+    "packageJson": {
+      "name": "smart-handoff",
+      "version": "",
+      "dependencies": {
+        "turbo": "^2.5.0",
+        "@changesets/cli": "^2.27.0",
+        "typescript": "^5.4.0"
+      }
+    }
+  },
+  "sources": [
+    {
+      "tool": "claude-code",
+      "transcriptPath": "/Users/mananjain/.claude/projects/-Users-mananjain-Downloads-personal-docs-smart-handoff/af52048f-f300-4054-a5e0-ce680fba3d65.jsonl",
+      "collectedAt": "2026-04-28T14:04:47.655Z"
+    }
+  ],
+  "extractionConfidence": 0.7000000000000001,
+  "rawTokenCount": 1775,
+  "notes": "Milestone 1 (and effectively all 4 milestones) of smart-handoff are implemented on branch `feature/milestone-1-core`. 10 git commits, 11 source files in core, 8 CLI files, Claude Code plugin.\n\n**Why:** User wanted the full plan implemented with zero LLM calls (no summarize.ts — deterministic truncation only).\n\n**How to apply:** Next session should start with `superpowers:finishing-a-development-branch` to decide on merge/PR, or continue with publishing to npm.\n\n## What's implemented\n\n### `@smarthandoff/core` (packages/core)\n- `types.ts` — full Handoff schema with all interfaces\n- `schema.ts` — Zod validators\n- `utils.ts` — estimateTokens, truncateToTokenBudget, truncateDiff, extractText\n- `builders/fromClaudeLogs.ts` — JSONL parser, extracts goal/files/blocker/decisions\n- `builders/fromGit.ts` — git status + diff stats + importance scoring\n- `builders/fromMemory.ts` — reads ~/.claude/projects/.../memory/\n- `builders/fromManual.ts` — manual note/goal/blocker injection\n- `builders/merge.ts` — merges Partial<Handoff>[] with deduplication\n- `compress/stripNoise.ts` — filters 85% noise from JSONL (keeps Write/Edit, user, assistant)\n- `compress/budgetAllocator.ts` — per-tool token budgets (gemini 50K, codex 8K, etc.)\n- `compress/compress.ts` — applies budgets, sorts by importance/confidence\n- `compress/compressDiffs.ts` — deterministic truncation (NO LLM)\n- `adapters/claude.ts` — clipboard, shortest format, no CLAUDE.md\n- `adapters/gemini.ts` — pipe, 50K, writes GEMINI.md, includes CLAUDE.md\n- `adapters/codex.ts` — pipe, 8K, patches AGENTS.md, TASK:/FILE:/FAILING: format\n- `adapters/cursor.ts` — file-write, MDC with alwaysApply, @file references\n- `adapters/chatgpt.ts` — two-part-clipboard, system prompt + first message\n- `adapters/generic.ts` — clipboard, universal markdown\n- `policy/evaluator.ts` — evaluatePolicy() for smart trigger decisions\n- 42 unit tests passing\n\n### `@smarthandoff/cli` (apps/cli)\n- `commands/init.ts` — creates .smarthandoff/, registers hooks in ~/.claude/settings.json\n- `commands/snapshot.ts` — builds handoff from all sources, saves JSON\n- `commands/resume.ts` — loads handoff, runs adapter, delivers\n- `commands/route.ts` — one-shot snapshot+deliver\n- `commands/analyze.ts` — token allocation bar chart + confidence scores\n- `commands/list.ts` — lists saved handoffs\n- `commands/_buildHandoff.ts` — shared handoff builder\n- `deliver/index.ts` — pipe/clipboard/file-write/two-part delivery\n- `detect/toolDetector.ts` — which tools are in PATH\n- `analytics.ts` — emits events to .smarthandoff/events.jsonl\n\n### Claude Code plugin (plugins/claude-code)\n- `skills/handoff.md` — /handoff slash command (reads own context, no API)\n- `hooks/stopFailure.sh` — auto-routes on rate limit\n- `hooks/preCompact.sh` — async snapshot on context window fill\n\n## Key decision\nZero LLM calls in v1. `summarize.ts` removed from scope. `compressDiffs.ts` uses deterministic truncation. The /handoff skill uses Claude Code's existing auth (reads own context window)."
+}

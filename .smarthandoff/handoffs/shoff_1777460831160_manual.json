@@ -1,0 +1,90 @@
+{
+  "id": "shoff_1777460831160_manual",
+  "projectRoot": "/Users/mananjain/Downloads/personal docs/smart-handoff",
+  "createdAt": "2026-04-29T11:07:11.160Z",
+  "createdBy": "mananjain@Manans-MacBook-Pro.local",
+  "mode": "rich",
+  "goals": [
+    {
+      "id": "goal_1",
+      "title": "understand the complete plan first, and make an understanding",
+      "description": "understand the complete plan first, and make an understanding \n\nalong with my question was:\ndoes the above uses LLM for generating context and handoff, if yes, need to use the claude code login auth only, as not supporting claude api right now\n\nand its answer:\nLooking at the implementation plan, yes — there are two places where LLMs are used:\n\n**1. `summarize.ts` — optional compression step**\nThe plan mentions using Claude API (Haiku) to summarize long text blocks and compress diffs when they exceed the token budget. This was marked as \"pluggable\" but defaulted to the Anthropic API.\n\n**2. `/handoff` Claude Code skill**\nThe skill runs *inside* Claude Code and asks Claude to read the current session and generate the briefing. This one already uses Claude Code's auth — it's just a skill file, no API calls.\n\n**The good news: most extraction is already deterministic.**\n\nLooking at the actual code in the plan:\n\n- `fromClaudeLogs.ts` — pure JSONL parsing, zero LLM\n- `fromGit.ts` — shell commands, zero LLM\n- `merge.ts` — pure TypeScript, zero LLM\n- `budgetAllocator.ts` — math, zero LLM\n- `stripNoise.ts` — event type filtering, zero LLM\n- All 5 adapters — string templates, zero LLM\n- Goal extraction — `messages[0].content`, deterministic\n- Blocker extraction — last user + last assistant message, deterministic\n- File changes — parse Write/Edit tool calls, deterministic\n- Decision extraction — regex pattern matching, deterministic\n\n**The only real LLM touch point is `summarize.ts`**, which only fires when a section *exceeds* its token budget and needs trimming. For most normal sessions this never triggers — the deterministic extraction already produces output well within budget.\n\n**Here's what to change:**\n\nRemove `summarize.ts` from the v1 scope entirely. Replace it with deterministic truncation:\n\n```typescript\n// packages/core/src/compress/summarize.ts\n// v1: pure truncation, no LLM needed\n\nexport function truncateToTokenBudget(text: string, budget: number): string {\n  const",
+      "status": "in_progress",
+      "sourceMessageIndex": 0
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision_1",
+      "summary": "The root cause: Claude encodes paths by replacing both `/` **and spaces** with `-`, but our code only replaces `/`.",
+      "rationale": "",
+      "timestamp": "2026-04-28T13:54:23.001Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_2",
+      "summary": "The truncation is intentional design — in a real handoff, the goal should be concise (~400 tokens ≈ 300 words) rather than a verbatim copy of the first user message.",
+      "rationale": "",
+      "timestamp": "2026-04-28T14:05:11.384Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "decision_3",
+      "summary": "FILES CHANGED (all wrong)** — Showing `.smarthandoff/handoffs/*.json` (the snapshot files themselves from `git status`) instead of the actual source files edited.",
+      "rationale": "",
+      "timestamp": "2026-04-29T10:50:30.655Z",
+      "confidence": 0.7
+    }
+  ],
+  "filesChanged": [
+    {
+      "path": "packages/core/src/builders/fromClaudeLogs.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 58,
+      "linesRemoved": 39,
+      "diff": "diff --git a/packages/core/src/builders/fromClaudeLogs.ts b/packages/core/src/builders/fromClaudeLogs.ts\nindex 44e249b..ae0beff 100644\n--- a/packages/core/src/builders/fromClaudeLogs.ts\n+++ b/packages/core/src/builders/fromClaudeLogs.ts\n@@ -42,27 +42,30 @@ export async function fromClaudeLogs(\n     sourceMessageIndex: 0,\n   };\n \n-  // Extract file changes from Write/Edit tool calls\n+  // Extract file changes from Write/Edit tool calls embedded in assistant events\n   const filesChanged: HandoffFileChange[] = [];\n   const seenPaths = new Set<string>();\n+  const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);\n \n-  const toolUseEvents = limited.filter(e => e.type === 'tool_use');\n-  for (const event of toolUseEvents) {\n+  for (const event of limited) {\n+    if (event.type !== 'assistant') continue;\n     const blocks = event.message?.content as ContentBlock[] | undefined;\n-    const toolBlock = blocks?.find(b => b.type === 'tool_use');\n-    if (!toolBlock?.input) continue;\n-    const input = toolBlock.input as { file_path?: string; new_content?: string; path?: string };\n-    const filePath = input.file_path || input.path;\n-    if (filePath && !seenPaths.has(filePath)) {\n-      seenPaths.add(filePath);\n-      filesChanged.push({\n-        path: filePath,\n-        status: 'modified',\n-        summary: '',\n-        importance: 'medium',\n-        linesAdded: 0,\n-        linesRemoved: 0,\n-      });\n+    if (!Array.isArray(blocks)) continue;\n+    for (const block of blocks) {\n+      if (block.type !== 'tool_use' || !WRITE_TOOLS.has(block.name ?? '')) continue;\n+      const input = block.input as { file_path?: string; path?: string } | undefined;\n+      const filePath = input?.file_path || input?.path;\n+      if (filePath && !seenPaths.has(filePath) && !filePath.match(/\\.?smarthandoff\\//)) {\n+        seenPaths.add(filePath);\n+        filesChanged.push({\n+          path: filePath,\n+          status: 'modified',\n+          summary: '',\n+          importance: 'medium',\n+          linesAdded: 0,\n+          linesRemoved: 0,\n+        });\n+      }\n     }\n   }\n \n@@ -116,30 +119,50 @@ export async function fromClaudeLogs(\n }\n \n const DECISION_PATTERNS = [\n-  /\\b(decided|choosing|chose|going with|we('ll| will) use)\\b/i,\n-  /\\b(not using|avoiding|rejected|instead of|rather than)\\b/i,\n-  /\\b(the reason|because|rationale|trade-?off)\\b/i,\n+  /\\b(decided|choosing|chose|going with|we('ll| will) use|I('ll| will) use)\\b/i,\n+  /\\b(not using|avoiding|rejected|instead of|rather than|dropped|removed)\\b/i,\n+  /\\b(the reason is|rationale|trade-?off|the fix is|root cause)\\b/i,\n+];\n+\n+// Sentences that are clearly not decisions — meta-commentary, fragments, questions\n+const DECISION_NOISE = [\n+  /^[),\"'\\s]/,                          // starts with fragment punctuation\n+  /\\?$/,                                 // questions\n+  /^(The|This|That|It|There|Here)\\s+(is|are|was|were|will|would|can|could|should|has|have)\\b/i, // descriptive observations\n+  /\\bthe handoff\\b/i,                   // meta-commentary about the handoff tool itself\n+  /\\bextract(or|ion|ing|ed)\\b/i,        // talking about extraction logic\n+  /\\btoken budget\\b/i,                  // token budget explanations\n ];\n \n function extractDecisions(events: ClaudeLogEvent[]): HandoffDecision[] {\n   const decisions: HandoffDecision[] = [];\n+  const seen = new Set<string>();\n   let id = 0;\n \n   for (const event of events) {\n     if (event.type !== 'assistant') continue;\n     const text = extractText(event.message?.content);\n-    const sentences = text.split(/[.!?]+/);\n+    const sentences = text.split(/(?<=[.!?])\\s+/);\n \n     for (const sentence of sentences) {\n-      if (DECISION_PATTERNS.some(p => p.test(sentence)) && sentence.trim().length > 30) {\n-        decisions.push({\n-          id: `decision_${++id}`,\n-          summary: sentence.trim().slice(0, 200),\n-          rationale: '',\n-          timestamp: event.timestamp || new Date().toISOString(),\n-          confidence: 0.7,\n-        });\n-      }\n+      const s = sentence.trim();\n+      if (s.length < 50 || s.length > 300) continue;\n+      if (!DECISION_PATTERNS.some(p => p.test(s))) continue;\n+      if (DECISION_NOISE.some(p => p.test(s))) continue;\n+      // Require sentence starts with capital letter (complete sentence, not fragment)\n+      if (!/^[A-Z\"']/.test(s)) continue;\n+\n+      const key = s.slice(0, 60).toLowerCase();\n+      if (seen.has(key)) continue;\n+      seen.add(key);\n+\n+      decisions.push({\n+        id: `decision_${++id}`,\n+        summary: s.slice(0, 200),\n+        rationale: '',\n+        timestamp: event.timestamp || new Date().toISOString(),\n+        confidence: 0.7,\n+      });\n     }\n   }\n \n@@ -150,21 +173,17 @@ function extractBlocker(lastUser: string, lastAssistant: string): string {\n   const errorPatterns = [\n     /error:/i, /failed/i, /cannot/i, /unable to/i, /❌/,\n     /test.*fail/i, /compilation error/i, /type error/i,\n+    /\\bstuck\\b/i, /\\bblocked\\b/i, /\\bbreaking\\b/i, /exception:/i,\n   ];\n \n   const combined = `${lastUser} ${lastAssistant}`;\n   const hasError = errorPatterns.some(p => p.test(combined));\n \n-  if (hasError) {\n-    const shorter = lastAssistant.length > 0 ? lastAssistant : lastUser;\n-    return shorter.slice(0, 500).trim();\n-  }\n-\n-  if (lastUser.length > 0) {\n-    return lastUser.slice(0, 300).trim();\n-  }\n+  if (!hasError) return '';\n \n-  return '';\n+  // Prefer assistant text (has the error detail), fall back to user\n+  const source = lastAssistant.length > 50 ? lastAssistant : lastUser;\n+  return source.slice(0, 500).trim();\n }\n \n function extractErrorMessage(text: string): string | undefined {\n",
+      "testsImpacted": [
+        "packages/core/src/__tests__/fromClaudeLogs.test.ts"
+      ]
+    },
+    {
+      "path": "packages/core/src/builders/fromGit.ts",
+      "status": "modified",
+      "summary": "",
+      "importance": "medium",
+      "linesAdded": 24,
+      "linesRemoved": 0,
+      "diff": "diff --git a/packages/core/src/builders/fromGit.ts b/packages/core/src/builders/fromGit.ts\nindex 9e699fe..cfc7f45 100644\n--- a/packages/core/src/builders/fromGit.ts\n+++ b/packages/core/src/builders/fromGit.ts\n@@ -13,6 +13,17 @@ export async function fromGit(\n     return { filesChanged: [] };\n   }\n \n+  let branch = 'unknown';\n+  try {\n+    branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf8' }).trim();\n+  } catch { /* ignore */ }\n+\n+  let recentCommitLines: string[] = [];\n+  try {\n+    recentCommitLines = execSync('git log --oneline -10', { cwd: repoPath, encoding: 'utf8' })\n+      .trim().split('\\n').filter(Boolean);\n+  } catch { /* ignore */ }\n+\n   let statusOutput: string;\n   try {\n     statusOutput = execSync('git status --porcelain=v1', {\n@@ -26,6 +37,11 @@ export async function fromGit(\n     .trim()\n     .split('\\n')\n     .filter(Boolean)\n+    .filter(line => {\n+      const filePath = line.slice(3).trim().replace(/^\"(.*)\"$/, '$1');\n+      // Exclude handoff artifacts — they're tool output, not source changes\n+      return !filePath.match(/\\.?smarthandoff\\//);\n+    })\n     .map(line => {\n       const statusCode = line.slice(0, 2).trim();\n       const filePath = line.slice(3).trim().replace(/^\"(.*)\"$/, '$1');\n@@ -69,8 +85,16 @@ export async function fromGit(\n     file.testsImpacted = findImpactedTests(file.path, repoPath);\n   }\n \n+  const gitSummary = [\n+    `Git branch: ${branch}`,\n+    recentCommitLines.length > 0\n+      ? `Recent commits:\\n${recentCommitLines.map(l => `  ${l}`).join('\\n')}`\n+      : '',\n+  ].filter(Boolean).join('\\n');\n+\n   return {\n     filesChanged,\n+    notes: gitSummary,\n     sources: [{\n       tool: 'claude-code',\n       collectedAt: new Date().toISOString(),\n",
+      "testsImpacted": []
+    }
+  ],
+  "blockers": [],
+  "nextSteps": [],
+  "context": {
+    "stack": [
+      "TypeScript ^5.4.0",
+      "Node v22.19.0"
+    ],
+    "packageJson": {
+      "name": "smart-handoff",
+      "version": "",
+      "dependencies": {
+        "turbo": "^2.5.0",
+        "@changesets/cli": "^2.27.0",
+        "typescript": "^5.4.0"
+      }
+    }
+  },
+  "sources": [
+    {
+      "tool": "claude-code",
+      "transcriptPath": "/Users/mananjain/.claude/projects/-Users-mananjain-Downloads-personal-docs-smart-handoff/af52048f-f300-4054-a5e0-ce680fba3d65.jsonl",
+      "collectedAt": "2026-04-29T11:07:11.000Z"
+    }
+  ],
+  "extractionConfidence": 0.7250000000000001,
+  "rawTokenCount": 3928,
+  "notes": "Git branch: feature/milestone-1-core\nRecent commits:\n  ada2ec2 fix: strip <ide_opened_file> and system tags from goal/blocker extraction\n  afbea53 fix: Claude path encoding — replace / and whitespace with - to match Claude Code's project dir naming\n  e6acf2a chore: fix CLI passWithNoTests, add README, smoke test verified\n  bbf1047 feat(plugin): Claude Code plugin — /handoff skill + StopFailure + PreCompact hooks\n  9e0b2fa feat(cli): route, analyze, list commands + analytics + policy engine\n  d2b92e9 feat(core): add gemini, codex, cursor, chatgpt adapters\n  7a45e67 test(core): unit tests for stripNoise, fromClaudeLogs, merge, budgetAllocator, adapters\n  76b40c4 feat(cli): init, snapshot, resume commands + deliver + tool detector\n  f4df434 feat(core): budget allocator, compress pipeline, claude and generic adapters\n  6a61105 feat(core): builders — fromClaudeLogs, fromGit, fromMemory, fromManual, merge, stripNoise\n\nMilestone 1 (and effectively all 4 milestones) of smart-handoff are implemented on branch `feature/milestone-1-core`. 10 git commits, 11 source files in core, 8 CLI files, Claude Code plugin.\n\n**Why:** User wanted the full plan implemented with zero LLM calls (no summarize.ts — deterministic truncation only).\n\n**How to apply:** Next session should start with `superpowers:finishing-a-development-branch` to decide on merge/PR, or continue with publishing to npm.\n\n## What's implemented\n\n### `@smarthandoff/core` (packages/core)\n- `types.ts` — full Handoff schema with all interfaces\n- `schema.ts` — Zod validators\n- `utils.ts` — estimateTokens, truncateToTokenBudget, truncateDiff, extractText\n- `builders/fromClaudeLogs.ts` — JSONL parser, extracts goal/files/blocker/decisions\n- `builders/fromGit.ts` — git status + diff stats + importance scoring\n- `builders/fromMemory.ts` — reads ~/.claude/projects/.../memory/\n- `builders/fromManual.ts` — manual note/goal/blocker injection\n- `builders/merge.ts` — merges Partial<Handoff>[] with deduplication\n- `compress/stripNoise.ts` — filters 85% noise from JSONL (keeps Write/Edit, user, assistant)\n- `compress/budgetAllocator.ts` — per-tool token budgets (gemini 50K, codex 8K, etc.)\n- `compress/compress.ts` — applies budgets, sorts by importance/confidence\n- `compress/compressDiffs.ts` — deterministic truncation (NO LLM)\n- `adapters/claude.ts` — clipboard, shortest format, no CLAUDE.md\n- `adapters/gemini.ts` — pipe, 50K, writes GEMINI.md, includes CLAUDE.md\n- `adapters/codex.ts` — pipe, 8K, patches AGENTS.md, TASK:/FILE:/FAILING: format\n- `adapters/cursor.ts` — file-write, MDC with alwaysApply, @file references\n- `adapters/chatgpt.ts` — two-part-clipboard, system prompt + first message\n- `adapters/generic.ts` — clipboard, universal markdown\n- `policy/evaluator.ts` — evaluatePolicy() for smart trigger decisions\n- 42 unit tests passing\n\n### `@smarthandoff/cli` (apps/cli)\n- `commands/init.ts` — creates .smarthandoff/, registers hooks in ~/.claude/settings.json\n- `commands/snapshot.ts` — builds handoff from all sources, saves JSON\n- `commands/resume.ts` — loads handoff, runs adapter, delivers\n- `commands/route.ts` — one-shot snapshot+deliver\n- `commands/analyze.ts` — token allocation bar chart + confidence scores\n- `commands/list.ts` — lists saved handoffs\n- `commands/_buildHandoff.ts` — shared handoff builder\n- `deliver/index.ts` — pipe/clipboard/file-write/two-part delivery\n- `detect/toolDetector.ts` — which tools are in PATH\n- `analytics.ts` — emits events to .smarthandoff/events.jsonl\n\n### Claude Code plugin (plugins/claude-code)\n- `skills/handoff.md` — /handoff slash command (reads own context, no API)\n- `hooks/stopFailure.sh` — auto-routes on rate limit\n- `hooks/preCompact.sh` — async snapshot on context window fill\n\n## Key decision\nZero LLM calls in v1. `summarize.ts` removed from scope. `compressDiffs.ts` uses deterministic truncation. The /handoff skill uses Claude Code's existing auth (reads own context window)."
+}
