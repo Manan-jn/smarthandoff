@@ -21,6 +21,22 @@ function relativizeAndFilter(filePath: string, projectRoot?: string): string | n
   return filePath;
 }
 
+function inferFileSummary(toolName: string, input: Record<string, unknown>): string {
+  if (toolName === 'Write' || toolName === 'NotebookEdit') {
+    const content = (input.new_content as string) || (input.source as string) || '';
+    const firstMeaningful = content.split('\n').find(
+      l => l.trim() && !l.trim().startsWith('//') && !l.trim().startsWith('#') && !l.trim().startsWith('/*') && !l.trim().startsWith('*')
+    );
+    return firstMeaningful?.trim().slice(0, 100) || '';
+  }
+  if (toolName === 'Edit' || toolName === 'MultiEdit') {
+    const newStr = (input.new_string as string) || '';
+    const firstLine = newStr.split('\n').find(l => l.trim());
+    return firstLine ? `edit: ${firstLine.trim().slice(0, 80)}` : 'edited';
+  }
+  return '';
+}
+
 function cleanSlice(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const truncated = text.slice(0, maxChars);
@@ -105,7 +121,7 @@ export async function fromClaudeLogs(
           filesChanged.push({
             path: rel,
             status: 'modified',
-            summary: '',
+            summary: inferFileSummary(block.name ?? '', block.input as Record<string, unknown>),
             importance: 'medium',
             linesAdded: 0,
             linesRemoved: 0,
@@ -172,12 +188,15 @@ const DECISION_PATTERNS = [
 
 // Sentences that are clearly not decisions — meta-commentary, fragments, questions
 const DECISION_NOISE = [
-  /^[),"'\s]/,                          // starts with fragment punctuation
-  /\?$/,                                 // questions
-  /^(The|This|That|It|There|Here)\s+(is|are|was|were|will|would|can|could|should|has|have)\b/i, // descriptive observations
+  /^[),"'\s*]/,                         // starts with fragment punctuation or markdown bold **
+  /^\*\*/,                              // markdown bold heading
+  /\?$/,                                // questions
+  /^(The|This|That|It|There|Here)\s+(is|are|was|were|will|would|can|could|should|has|have)\b/i,
   /\bthe handoff\b/i,                   // meta-commentary about the handoff tool itself
   /\bextract(or|ion|ing|ed)\b/i,        // talking about extraction logic
   /\btoken budget\b/i,                  // token budget explanations
+  /\b(summary|files changed|next steps|decisions made)\b/i, // label headers
+  /^[A-Z\s]+\*\*\s*—/,                 // "HEADING** —" pattern (markdown section headers)
 ];
 
 function extractDecisions(events: ClaudeLogEvent[]): HandoffDecision[] {
