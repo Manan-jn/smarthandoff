@@ -14,9 +14,20 @@ export function compressText(text: string, budget: number): string {
   const targetChars = budget * 4;
   if (text.length <= targetChars) return text;
 
-  const halfBudget = Math.floor(targetChars * 0.7);
-  const endBudget = Math.floor(targetChars * 0.3);
-  const start = text.slice(0, halfBudget);
-  const end = text.slice(-endBudget);
-  return `${start}\n\n[...truncated...]\n\n${end}`;
+  const cutPoint = Math.floor(targetChars * 0.85);
+  const slice = text.slice(0, cutPoint);
+
+  // Prefer cutting at a sentence boundary
+  const sentenceEnd = slice.search(/[.!?][^.!?]*$/);
+  if (sentenceEnd > cutPoint * 0.5) {
+    return slice.slice(0, sentenceEnd + 1).trim();
+  }
+
+  // Fall back to last word boundary
+  const wordEnd = slice.lastIndexOf(' ');
+  if (wordEnd > cutPoint * 0.5) {
+    return slice.slice(0, wordEnd).trim() + '…';
+  }
+
+  return slice.trim() + '…';
 }

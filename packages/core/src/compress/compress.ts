@@ -74,14 +74,25 @@ function compressFiles(
   for (const file of sorted) {
     if (remaining <= 50) break;
     const fileTokens = estimateTokens(JSON.stringify(file));
-    const fileBudget = Math.min(fileTokens, perFile, remaining);
+
+    if (fileTokens <= perFile && fileTokens <= remaining) {
+      // File fits — no compression needed
+      result.push(file);
+      remaining -= fileTokens;
+      continue;
+    }
+
+    // File is over budget — compress diff heavily, keep summary intact if possible
+    const fileBudget = Math.min(perFile, remaining);
+    const summaryTokens = estimateTokens(file.summary);
+    const diffBudget = Math.max(0, fileBudget - summaryTokens - 20);
 
     result.push({
       ...file,
-      diff: file.diff ? compressDiff(file.diff, Math.floor(fileBudget * 0.7)) : undefined,
-      summary: compressText(file.summary, Math.floor(fileBudget * 0.3)),
+      diff: file.diff ? compressDiff(file.diff, diffBudget) : undefined,
+      summary: compressText(file.summary, Math.min(summaryTokens, fileBudget - 20)),
     });
-    remaining -= Math.min(fileTokens, fileBudget);
+    remaining -= fileBudget;
   }
 
   return result;
