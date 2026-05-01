@@ -17,8 +17,9 @@ export const routeCommand = new Command('route')
   .option('--preview', 'preview briefing without delivering')
   .option('--trigger <trigger>', 'trigger source (manual|rate_limit|precompact)', 'manual')
   .option('--session-id <id>', 'specific session to route from')
-  .option('--summarize', 'LLM summarization pass for higher-quality handoff (uses claude CLI)')
-  .option('--summarize-model <model>', 'model for summarization pass', 'sonnet')
+  .option('--summarize', 'LLM summarization pass for higher-quality handoff')
+  .option('--summarize-provider <p>', 'claude-cli | anthropic | gemini | openai (auto-detects from env vars)')
+  .option('--summarize-model <model>', 'model override for summarization provider')
   .action(async (options) => {
     const config = await loadConfig();
 
@@ -52,8 +53,12 @@ export const routeCommand = new Command('route')
     // Optional LLM summarization pass
     let finalHandoff = handoff;
     if (options.summarize) {
-      console.log(`\n  Running LLM summarization (${options.summarizeModel as string})...`);
-      finalHandoff = await summarize(handoff, { model: options.summarizeModel as string });
+      const provider = (options.summarizeProvider as string | undefined) ?? 'auto';
+      console.log(`\n  Running LLM summarization (provider: ${provider})...`);
+      finalHandoff = await summarize(handoff, {
+        provider: options.summarizeProvider as import('@smarthandoff/core').ProviderName | undefined,
+        model: options.summarizeModel as string | undefined,
+      });
       if (finalHandoff !== handoff) {
         console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
       }

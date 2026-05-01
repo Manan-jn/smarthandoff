@@ -21,8 +21,9 @@ export const snapshotCommand = new Command('snapshot')
   .option('--note <text>', 'add a manual note to the handoff')
   .option('--source <source>', 'trigger source (manual|precompact|stop)', 'manual')
   .option('--print', 'print handoff summary to stdout')
-  .option('--summarize', 'LLM summarization pass for higher-quality handoff (uses claude CLI)')
-  .option('--summarize-model <model>', 'model for summarization pass', 'sonnet')
+  .option('--summarize', 'LLM summarization pass for higher-quality handoff')
+  .option('--summarize-provider <p>', 'claude-cli | anthropic | gemini | openai (auto-detects from env vars)')
+  .option('--summarize-model <model>', 'model override for summarization provider')
   .action(async (options) => {
     const config = await loadConfig();
 
@@ -89,8 +90,12 @@ export const snapshotCommand = new Command('snapshot')
 
     let finalHandoff = handoff;
     if (options.summarize) {
-      console.log('  Running LLM summarization...');
-      finalHandoff = await summarize(handoff, { model: options.summarizeModel as string });
+      const provider = (options.summarizeProvider as string | undefined) ?? 'auto';
+      console.log(`  Running LLM summarization (provider: ${provider})...`);
+      finalHandoff = await summarize(handoff, {
+        provider: options.summarizeProvider as import('@smarthandoff/core').ProviderName | undefined,
+        model: options.summarizeModel as string | undefined,
+      });
       if (finalHandoff !== handoff) {
         console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
       }

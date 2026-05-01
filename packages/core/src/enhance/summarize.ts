@@ -1,9 +1,11 @@
 import type { Handoff, HandoffDecision, HandoffBlocker, HandoffNextStep } from '../types.js';
 import { buildPrompt, ENHANCE_SCHEMA } from './prompt.js';
-import { callClaudeCli } from './providers/claudeCli.js';
+import { createProvider, autoDetectProvider, type ProviderName } from './providers/index.js';
 
 export interface SummarizeOptions {
+  provider?: ProviderName;
   model?: string;
+  apiKey?: string;
   timeoutMs?: number;
 }
 
@@ -50,14 +52,16 @@ export async function summarize(handoff: Handoff, options: SummarizeOptions = {}
     return handoff;
   }
 
-  const model = options.model ?? 'sonnet';
+  const providerName = options.provider ?? autoDetectProvider();
 
   try {
-    const prompt = await buildPrompt(handoff, transcriptPath);
-    const enhanced = await callClaudeCli(prompt, ENHANCE_SCHEMA, {
-      model,
+    const llm = await createProvider(providerName, {
+      model: options.model,
+      apiKey: options.apiKey,
       timeoutMs: options.timeoutMs,
-    }) as EnhancedHandoff;
+    });
+    const prompt = await buildPrompt(handoff, transcriptPath);
+    const enhanced = await llm.call(prompt, ENHANCE_SCHEMA) as EnhancedHandoff;
 
     return mergeEnhancements(handoff, enhanced);
   } catch (err) {

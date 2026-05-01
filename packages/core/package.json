@@ -22,8 +22,11 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@google/generative-ai": "^0.24.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
+    "openai": "^6.35.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
