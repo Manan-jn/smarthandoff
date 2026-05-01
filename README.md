@@ -336,6 +336,7 @@ Add `--save-only` to capture without delivering (replaces the old `snapshot` com
 --budget <tokens>        Override token budget
 --include-diffs          Include full file diffs in output
 --preview                Print briefing to stdout without delivering
+--launch                 Copy handoff to clipboard and launch the target CLI directly
 --save-only              Capture and save without delivering to any tool
 --summary                Print goal + blocker after saving (use with --save-only)
 --note <text>            Inject a manual note into the handoff
@@ -353,6 +354,11 @@ smarthandoff route --to gemini --include-diffs
 smarthandoff route --to gemini --budget 30000
 smarthandoff route --to gemini --mode debug  # 100K budget, no compression
 
+# One-command handoff: copies prompt to clipboard and launches target CLI
+smarthandoff route --to gemini --launch    # copies to clipboard, spawns gemini --skip-trust
+smarthandoff route --to codex --launch     # copies to clipboard, spawns codex
+smarthandoff route --to claude --launch    # copies to clipboard, spawns claude
+
 # Save only (no delivery)
 smarthandoff route --save-only
 smarthandoff route --save-only --mode lean
@@ -367,7 +373,38 @@ smarthandoff route --to gemini --summarize openai
 smarthandoff route --to gemini --summarize claude-cli   # no API key needed
 ```
 
-**Expected output:**
+**`--launch` behavior:**
+
+When `--launch` is set, instead of printing the handoff or writing to clipboard silently, Smart Handoff:
+1. Copies the formatted prompt to your clipboard
+2. Prints `✓ Handoff copied to clipboard — Paste it (Cmd+V / Ctrl+V) as your first message`
+3. Spawns the target CLI in your terminal (full TTY — fully interactive)
+
+| Target | Binary | Launch flags |
+|--------|--------|--------------|
+| `gemini` | `gemini` | `--skip-trust` |
+| `codex` | `codex` | _(none)_ |
+| `claude` | `claude` | _(none)_ |
+| `cursor`, `chatgpt`, `generic` | — | Falls back to manual run message |
+
+If the target binary is not installed, `--launch` prints the manual run command instead.
+
+**Expected output (`--launch`):**
+```
+Building handoff for gemini...
+  ✓ Session parsed (2 goals, 8 files)
+  ✓ Goal: Implement fromClaudeLogs JSONL parser
+  ✓ Compressed: 4,821 tokens (budget: 50,000)
+
+Delivering to gemini...
+
+  ✓ Handoff copied to clipboard
+  Paste it (Cmd+V / Ctrl+V) as your first message in gemini.
+
+[gemini launches interactively in your terminal]
+```
+
+**Expected output (standard delivery):**
 ```
 Building handoff for gemini...
   ✓ Session parsed (2 goals, 8 files)
@@ -376,7 +413,7 @@ Building handoff for gemini...
   ✓ Compressed: 4,821 tokens (budget: 50,000)
 
 Delivering to gemini...
-Run: cat .smarthandoff/latest.md | gemini -i "You are resuming a coding task. Context is above."
+✓ Briefing copied to clipboard (4,821 tokens)
 ```
 
 ---
