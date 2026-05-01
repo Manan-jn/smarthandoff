@@ -167,11 +167,9 @@ smart-handoff/
 │           ├── analytics.ts      ← events.jsonl emitter
 │           ├── commands/
 │           │   ├── init.ts       ← smarthandoff init
-│           │   ├── route.ts      ← smarthandoff route
-│           │   ├── snapshot.ts   ← smarthandoff snapshot
+│           │   ├── route.ts      ← smarthandoff route (+ --save-only)
 │           │   ├── resume.ts     ← smarthandoff resume
-│           │   ├── analyze.ts    ← smarthandoff analyze
-│           │   ├── list.ts       ← smarthandoff list
+│           │   ├── list.ts       ← smarthandoff list (+ --inspect)
 │           │   └── _buildHandoff.ts  ← shared handoff builder
 │           ├── deliver/
 │           │   └── index.ts      ← pipe | clipboard | file-write router
@@ -320,41 +318,53 @@ Detected tools:
 
 ### `smarthandoff route` *(primary command)*
 
-One command: snapshot current session → compress → deliver to target tool.
+One command: snapshot current session → compress → deliver to target tool.  
+Add `--save-only` to capture without delivering (replaces the old `snapshot` command).
 
 **What it does:**
 1. Reads the most recent Claude Code JSONL transcript from `~/.claude/projects/*/`
 2. Runs all enabled collectors (claudeLogs, git, memory)
 3. Merges partials into a `Handoff` object
 4. Saves it as `.smarthandoff/handoffs/<id>.json` and `.smarthandoff/latest.json`
-5. Renders adapter output for the target tool
-6. Delivers (pipe / clipboard / file-write)
-7. Emits an analytics event to `.smarthandoff/events.jsonl`
+5. Renders adapter output for the target tool *(skipped with `--save-only`)*
+6. Delivers (pipe / clipboard / file-write) *(skipped with `--save-only`)*
 
 **Flags:**
 ```
---to <tool>          Target: gemini | codex | cursor | claude | chatgpt | generic
---auto               Auto-detect best available installed tool
---mode <mode>        lean | rich (default: rich)
---budget <tokens>    Override token budget
---include-diffs      Include full file diffs in output
---preview            Print briefing to stdout without delivering
---trigger <trigger>       manual | rate_limit | precompact (for analytics, default: manual)
---session-id <id>         Use a specific Claude session instead of the most recent
---summarize               LLM summarization pass for higher-quality handoff (see Summarization Pass)
---summarize-model <model> Model for the summarization pass (default: sonnet)
+--to <tool>              Target: gemini | codex | cursor | claude | chatgpt | generic
+--mode <mode>            lean | rich | debug (default: rich)
+--budget <tokens>        Override token budget
+--include-diffs          Include full file diffs in output
+--preview                Print briefing to stdout without delivering
+--save-only              Capture and save without delivering to any tool
+--summary                Print goal + blocker after saving (use with --save-only)
+--note <text>            Inject a manual note into the handoff
+--session-id <id>        Use a specific Claude session instead of the most recent
+--summarize [provider/model]  LLM pass: auto | claude-cli | anthropic | gemini | openai | provider/model
 ```
 
 **Examples:**
 ```bash
 smarthandoff route --to gemini
 smarthandoff route --to codex
-smarthandoff route --auto
+smarthandoff route                         # auto-detects best available tool
 smarthandoff route --to gemini --preview
 smarthandoff route --to gemini --include-diffs
 smarthandoff route --to gemini --budget 30000
-smarthandoff route --to gemini --summarize
-smarthandoff route --to gemini --summarize --summarize-model sonnet
+smarthandoff route --to gemini --mode debug  # 100K budget, no compression
+
+# Save only (no delivery)
+smarthandoff route --save-only
+smarthandoff route --save-only --mode lean
+smarthandoff route --save-only --note "focus on the auth module next"
+smarthandoff route --save-only --summary
+
+# With LLM summarization
+smarthandoff route --to gemini --summarize              # auto-detect provider
+smarthandoff route --to gemini --summarize gemini       # explicit provider
+smarthandoff route --to gemini --summarize gemini/gemini-2.5-flash  # provider + model
+smarthandoff route --to gemini --summarize openai
+smarthandoff route --to gemini --summarize claude-cli   # no API key needed
 ```
 
 **Expected output:**
@@ -363,53 +373,10 @@ Building handoff for gemini...
   ✓ Session parsed (2 goals, 8 files)
   ✓ Goal: Implement fromClaudeLogs JSONL parser
   ✓ Blocker: Tests failing on JSONL extraction
-
   ✓ Compressed: 4,821 tokens (budget: 50,000)
 
 Delivering to gemini...
-  ✓ Written: GEMINI.md
-
 Run: cat .smarthandoff/latest.md | gemini -i "You are resuming a coding task. Context is above."
-```
-
----
-
-### `smarthandoff snapshot`
-
-Capture current session state and save a handoff without routing anywhere.
-
-**What it does:**
-Same as `route` up through the merge step — reads, collects, merges, saves. Does not render an adapter output or deliver. Useful for saving state before you decide where to go, or as a checkpoint during a long session.
-
-**Flags:**
-```
---mode <mode>        lean | rich | debug (default: rich)
---session-id <id>    Specific Claude session ID
---budget <tokens>    Override token budget
---note <text>        Append a manual note to the handoff
---source <source>         manual | precompact | stop (for analytics)
---print                   Also print a summary to stdout
---summarize               LLM summarization pass for higher-quality handoff
---summarize-model <model> Model for the summarization pass (default: sonnet)
-```
-
-**Examples:**
-```bash
-smarthandoff snapshot
-smarthandoff snapshot --mode lean
-smarthandoff snapshot --note "focus on the auth module next"
-smarthandoff snapshot --print
-smarthandoff snapshot --summarize --print
-```
-
-**Expected output:**
-```
-✓ Handoff created: shoff_1777385087720_manual
-  Goals:     2
-  Decisions: 4
-  Files:     8
-  Blockers:  1
-  Tokens:    ~12,340 raw
 ```
 
 ---
@@ -419,14 +386,13 @@ smarthandoff snapshot --summarize --print
 Generate a briefing from a previously saved handoff and deliver it to a target tool.
 
 **What it does:**
-Loads a saved `.smarthandoff/handoffs/<id>.json` (or `latest.json`), runs it through the adapter for the specified target, and delivers. Does not re-read the transcript — uses the already-extracted snapshot. Use this when you saved a snapshot earlier and now know where you want to go.
+Loads a saved `.smarthandoff/handoffs/<id>.json` (or `latest.json`), runs it through the adapter for the specified target, and delivers. Does not re-read the transcript — uses the already-extracted snapshot.
 
 **Flags:**
 ```
 --id <handoffId>     Handoff ID to resume from (default: most recent)
 --to <tool>          Target tool (default: generic)
 --budget <tokens>    Override token budget
---mode <mode>        lean | rich
 --copy               Force copy to clipboard
 --print              Print briefing to stdout instead of delivering
 ```
@@ -441,30 +407,43 @@ smarthandoff resume --to claude --print
 
 ---
 
-### `smarthandoff analyze`
+### `smarthandoff list`
 
-Inspect a handoff: what was extracted, how tokens are allocated, confidence scores.
-
-**What it does:**
-Loads a handoff and shows a visual breakdown of what was extracted from each source and how the token budget would be split across sections for a given target tool.
+List all saved handoffs, or inspect a specific handoff's token allocation.
 
 **Flags:**
 ```
---id <handoffId>     Handoff to analyze (default: most recent)
---target <tool>      Show allocation for this target (default: gemini)
---verbose            Dump full JSON of the handoff
+--limit <n>          Number to show (default: 10)
+--inspect [id]       Inspect a handoff — token allocation, confidence scores (default: most recent)
+--target <tool>      Target tool for --inspect allocation (default: gemini)
+--json               Dump full handoff JSON (use with --inspect)
 ```
 
 **Examples:**
 ```bash
-smarthandoff analyze
-smarthandoff analyze --target codex
-smarthandoff analyze --id shoff_1777385087720_manual --verbose
+smarthandoff list
+smarthandoff list --limit 3
+smarthandoff list --inspect                         # most recent
+smarthandoff list --inspect shoff_1777385087720_manual
+smarthandoff list --inspect --target codex
+smarthandoff list --inspect --json                  # raw handoff JSON
 ```
 
-**Expected output:**
+**Expected output (list):**
 ```
-HANDOFF ANALYSIS: shoff_1777385087720_manual
+SMART HANDOFFS — /Users/you/my-project
+
+  shoff_1777385087720_manual  2 hours ago   Implement fromClaudeLogs JSONL parser
+  shoff_1777385162745_manual  1 hour ago    Fix budget allocator scaling
+  shoff_1777385231291_manual  30 mins ago   Add decision noise filters
+
+Total: 3 handoffs
+Run: smarthandoff resume --id <id> --to <tool>
+```
+
+**Expected output (--inspect):**
+```
+HANDOFF: shoff_1777385087720_manual
 Created: 2026-04-29T12:34:56Z | Source: claude-code
 
 EXTRACTION SOURCES
@@ -480,37 +459,9 @@ TOKEN ALLOCATION (target: gemini, budget: 50,000)
   CLAUDE.md    ██████░░░░░░░░░░░░░░ ~6,000 tokens  (1 files)
 
 CONFIDENCE SCORES
-  Overall:     84%
-  Decision:    90%  "decided to use vitest over jest for ESM compatibility..."
-  Decision:    75%  "rather than parsing tool_result events, extract from ass..."
-```
-
----
-
-### `smarthandoff list`
-
-List all saved handoffs for the current project.
-
-**Flags:**
-```
---limit <n>    Number to show (default: 10)
-```
-
-**Example:**
-```bash
-smarthandoff list
-```
-
-**Expected output:**
-```
-SMART HANDOFFS — /Users/you/my-project
-
-  shoff_1777385087720_manual   2 hours ago   Implement fromClaudeLogs JSONL parser
-  shoff_1777385162745_manual   1 hour ago    Fix budget allocator scaling
-  shoff_1777385231291_manual   30 mins ago   Add decision noise filters
-
-Total: 3 handoffs
-Run: smarthandoff resume --id <id> --to <tool>
+  Overall:  84%
+  Decision: 90%  "decided to use vitest over jest for ESM compatibility..."
+  Decision: 75%  "rather than parsing tool_result events, extract from ass..."
 ```
 
 ---
@@ -537,16 +488,32 @@ The `--summarize` flag adds an optional LLM pass after deterministic extraction.
 3. LLM rewrites only the text fields — file paths, timestamps, IDs are never touched
 4. Falls back silently to the deterministic handoff on any failure
 
-**Current provider: `claude-cli`**
+**Providers**
 
-Uses the `claude` binary already installed by Claude Code. No additional API key needed — uses your existing login via keychain auth.
+| Provider | Trigger | Default model | Notes |
+|----------|---------|--------------|-------|
+| `auto` | no `--summarize` value | — | Checks API keys, falls back to `claude-cli` |
+| `claude-cli` | `claude` binary in PATH | `sonnet` | Zero-config for Claude Code users |
+| `anthropic` | `ANTHROPIC_API_KEY` env | `claude-sonnet-4-6` | Anthropic SDK, tool-use structured output |
+| `gemini` | `GEMINI_API_KEY` env | `gemini-2.5-flash` | Google AI SDK, JSON mode |
+| `openai` | `OPENAI_API_KEY` env | `gpt-4o-mini` | OpenAI SDK, JSON schema response format |
 
 ```bash
-smarthandoff route --to gemini --summarize
-smarthandoff route --to gemini --summarize --summarize-model sonnet
+smarthandoff route --to gemini --summarize                          # auto-detect provider
+smarthandoff route --to gemini --summarize claude-cli               # explicit provider (no API key needed)
+smarthandoff route --to gemini --summarize gemini                   # explicit Gemini provider
+smarthandoff route --to gemini --summarize gemini/gemini-2.5-flash  # provider + model override
+smarthandoff route --to gemini --summarize anthropic
+smarthandoff route --to gemini --summarize openai
 ```
 
-**Upcoming: multi-provider support** — see [Implementation Plan & Status](#implementation-plan--status) for the roadmap to add Anthropic SDK, Gemini, and OpenAI as provider options.
+API keys are read from environment variables — never passed as flags:
+
+```bash
+export GEMINI_API_KEY=AIza...
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+```
 
 ---
 
@@ -719,7 +686,7 @@ This means hitting a rate limit automatically routes your session to the configu
 
 Fires asynchronously when the context window is filling up (before Claude compacts it). Calls:
 ```bash
-smarthandoff snapshot --mode lean --source precompact
+smarthandoff route --save-only --mode lean --source precompact
 ```
 This creates a lean checkpoint before compaction so you never lose state.
 
@@ -863,36 +830,30 @@ The project was designed in four milestones, targeting complete delivery in 8 we
 
 **CLI (`@smarthandoff/cli`):**
 - [x] `init` — project setup + hook registration + gitignore
-- [x] `route` — collect → merge → [summarize] → compress → deliver; `--summarize`, `--summarize-model`
-- [x] `snapshot` — collect + save; `--summarize`, `--summarize-model`
+- [x] `route` — collect → merge → [summarize] → compress → deliver; `--summarize [provider/model]`, `--save-only`
 - [x] `resume` — load saved handoff → deliver to any target
-- [x] `analyze` — token allocation visualization + confidence scores
-- [x] `list` — show all saved handoffs
+- [x] `list` — show all saved handoffs; `--inspect [id]` for token budget visualization
 - [x] `toolDetector.ts` — PATH-based tool detection including `claude`
 - [x] `analytics.ts` — event emission to `events.jsonl`
 - [x] All delivery modes: pipe, clipboard, file-write, two-part-clipboard
-- [x] `--auto` flag with ranked tool detection
 
 **Claude Code plugin:**
 - [x] `manifest.json` — plugin definition
-- [x] `/handoff` skill — in-editor briefing generator with `--summarize` deep-understanding mode
+- [x] `/handoff` skill — in-editor briefing generator with optional `--summarize` pass
 - [x] `stopFailure.sh` — auto-route on rate limit
-- [x] `preCompact.sh` — async snapshot on context fill
+- [x] `preCompact.sh` — async `route --save-only` on context fill
 
-### Milestone 2 — Multi-Provider Summarization (Planned)
+### Milestone 2 — Multi-Provider Summarization ✅
 
-Add Anthropic SDK, Gemini, and OpenAI as pluggable providers for the `--summarize` pass, so users can bring their own API key instead of relying on the `claude` CLI binary.
+Multi-provider summarization is shipped. Users can bring any API key; the provider is selected via `--summarize [provider/model]` or auto-detected from environment variables.
 
-See the detailed design in the section below.
-
-- [ ] `enhance/providers/index.ts` — provider factory + auto-detection from env vars
-- [ ] `enhance/providers/anthropic.ts` — Anthropic SDK with tool-use structured output
-- [ ] `enhance/providers/gemini.ts` — Google AI SDK with `responseSchema` JSON mode
-- [ ] `enhance/providers/openai.ts` — OpenAI SDK with `response_format` JSON schema mode
-- [ ] `--summarize-provider` flag on `route` and `snapshot`
-- [ ] Auto-detect provider from env vars (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
-- [ ] Provider-specific default models (`gemini-2.0-flash`, `gpt-4o-mini`, `claude-sonnet-4-6`)
-- [ ] Config file: `summarize.provider`, `summarize.model`
+- [x] `enhance/providers/index.ts` — provider factory + auto-detection from env vars
+- [x] `enhance/providers/anthropic.ts` — Anthropic SDK with tool-use structured output
+- [x] `enhance/providers/gemini.ts` — Google AI SDK with `responseSchema` JSON mode
+- [x] `enhance/providers/openai.ts` — OpenAI SDK with `response_format` JSON schema mode
+- [x] `--summarize [provider/model]` flag on `route` (replaces `--summarize-provider` + `--summarize-model`)
+- [x] Auto-detect provider from env vars (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
+- [x] Provider-specific default models (`gemini-2.5-flash`, `gpt-4o-mini`, `claude-sonnet-4-6`)
 
 ### Milestone 3 — Publishing & Distribution (Planned)
 
@@ -908,9 +869,9 @@ See the detailed design in the section below.
 
 ---
 
-## Multi-Provider Summarization — Design
+## Multi-Provider Summarization — Implementation
 
-The `--summarize` flag currently uses the `claude` CLI binary (zero-config for Claude Code users). This section documents the planned extension to support any LLM provider via API key.
+The `--summarize` flag supports four providers. Auto-detection checks environment variables in priority order; explicit `--summarize <provider>` always wins.
 
 ### Provider interface
 
@@ -927,7 +888,7 @@ export type ProviderName = 'claude-cli' | 'anthropic' | 'gemini' | 'openai';
 
 ### Provider selection
 
-**Priority order when `--summarize` is passed with no `--summarize-provider`:**
+**Priority order when `--summarize` is passed with no value:**
 
 1. `ANTHROPIC_API_KEY` env var → `anthropic` provider
 2. `GEMINI_API_KEY` or `GOOGLE_API_KEY` env var → `gemini` provider
@@ -935,14 +896,13 @@ export type ProviderName = 'claude-cli' | 'anthropic' | 'gemini' | 'openai';
 4. `claude` binary in PATH → `claude-cli` provider
 5. None found → error with helpful message listing what to set
 
-Explicit override always wins: `--summarize-provider gemini`
+Explicit override always wins: `--summarize gemini`
 
 ### CLI flags
 
 ```
---summarize                         Enable LLM summarization pass
---summarize-provider <p>            claude-cli | anthropic | gemini | openai
---summarize-model <model>           Override default model for the chosen provider
+--summarize [provider/model]        Enable LLM summarization pass; optional provider or provider/model
+                                    e.g. --summarize, --summarize gemini, --summarize gemini/gemini-2.5-flash
 ```
 
 API keys are **never passed as flags** — always via environment variables:
@@ -959,7 +919,7 @@ export OPENAI_API_KEY=sk-...
 |----------|--------------|----------------------------|
 | `claude-cli` | `sonnet` | `--system-prompt` + markdown extraction fallback |
 | `anthropic` | `claude-sonnet-4-6` | `tools` parameter with JSON schema (tool-use mode) |
-| `gemini` | `gemini-2.0-flash` | `responseMimeType: 'application/json'` + `responseSchema` |
+| `gemini` | `gemini-2.5-flash` | `responseMimeType: 'application/json'` + `responseSchema` |
 | `openai` | `gpt-4o-mini` | `response_format: { type: 'json_schema', json_schema }` |
 
 ### Optional dependencies
@@ -977,10 +937,10 @@ npm install @google/generative-ai
 npm install openai
 ```
 
-If you run `--summarize-provider gemini` without the SDK installed:
+If you run `--summarize gemini` without the SDK installed:
 ```
 ✗ Gemini provider requires: npm install @google/generative-ai
-  Or switch to: --summarize-provider claude-cli (no install needed)
+  Or switch to: --summarize claude-cli (no install needed)
 ```
 
 ### Config file integration
@@ -989,21 +949,21 @@ If you run `--summarize-provider gemini` without the SDK installed:
 # .smarthandoff/config.yaml
 summarize:
   provider: gemini          # auto-detect if omitted
-  model: gemini-2.0-flash   # provider default if omitted
+  model: gemini-2.5-flash   # provider default if omitted
   # API key via GEMINI_API_KEY env var — never in config
 ```
 
-### New files
+### Files
 
 ```
 packages/core/src/enhance/
 ├── providers/
-│   ├── claudeCli.ts     ← existing
-│   ├── anthropic.ts     ← new: @anthropic-ai/sdk tool-use structured output
-│   ├── gemini.ts        ← new: @google/generative-ai responseSchema JSON mode
-│   ├── openai.ts        ← new: openai response_format JSON schema mode
-│   └── index.ts         ← new: factory(options) → LLMProvider + auto-detect logic
-└── summarize.ts         ← update: use factory instead of hardcoded claudeCli
+│   ├── claudeCli.ts     — subprocess via `claude --print`
+│   ├── anthropic.ts     — @anthropic-ai/sdk tool-use structured output
+│   ├── gemini.ts        — @google/generative-ai responseSchema JSON mode
+│   ├── openai.ts        — openai response_format JSON schema mode
+│   └── index.ts         — factory(options) → LLMProvider + auto-detect logic
+└── summarize.ts         — orchestrator; graceful fallback on failure
 ```
 
 ---
@@ -1023,38 +983,35 @@ pnpm --filter @smarthandoff/cli build
 Run these after `pnpm build` from the repo root:
 
 ```bash
-# Basic snapshot (deterministic extraction, no LLM)
-node apps/cli/dist/index.js snapshot --print
+# Save handoff without delivering (deterministic extraction, no LLM)
+node apps/cli/dist/index.js route --save-only
 
-# Snapshot with LLM summarization — claude-cli (no API key needed, uses existing Claude Code login)
-node apps/cli/dist/index.js snapshot --summarize --print
+# Save with LLM summarization — claude-cli (no API key needed, uses existing Claude Code login)
+node apps/cli/dist/index.js route --save-only --summarize
 
-# Snapshot with specific provider
-ANTHROPIC_API_KEY=<key> node apps/cli/dist/index.js snapshot --summarize --summarize-provider anthropic --print
-GEMINI_API_KEY=<key>    node apps/cli/dist/index.js snapshot --summarize --summarize-provider gemini --print
-OPENAI_API_KEY=<key>    node apps/cli/dist/index.js snapshot --summarize --summarize-provider openai --print
+# Save with specific provider
+ANTHROPIC_API_KEY=<key> node apps/cli/dist/index.js route --save-only --summarize anthropic
+GEMINI_API_KEY=<key>    node apps/cli/dist/index.js route --save-only --summarize gemini
+OPENAI_API_KEY=<key>    node apps/cli/dist/index.js route --save-only --summarize openai
 
 # Override model for a provider
-GEMINI_API_KEY=<key> node apps/cli/dist/index.js snapshot --summarize --summarize-provider gemini --summarize-model gemini-2.0-flash --print
+GEMINI_API_KEY=<key> node apps/cli/dist/index.js route --save-only --summarize gemini/gemini-2.5-flash
 
 # Route to a specific tool (preview without delivering)
 node apps/cli/dist/index.js route --to gemini --preview
 node apps/cli/dist/index.js route --to claude --preview
 node apps/cli/dist/index.js route --to codex --preview
 
-# Route with auto-detect
-node apps/cli/dist/index.js route --auto --preview
-
 # Route + summarization in one command
-GEMINI_API_KEY=<key> node apps/cli/dist/index.js route --to gemini --summarize --summarize-provider gemini --preview
+GEMINI_API_KEY=<key> node apps/cli/dist/index.js route --to gemini --summarize gemini --preview
 
-# Analyze token budget for last handoff
-node apps/cli/dist/index.js analyze
+# Inspect token budget for last handoff
+node apps/cli/dist/index.js list --inspect
 
 # List saved handoffs
 node apps/cli/dist/index.js list
 
-# Resume from latest snapshot
+# Resume from latest saved handoff
 node apps/cli/dist/index.js resume --to gemini --preview
 node apps/cli/dist/index.js resume --to claude --preview
 
