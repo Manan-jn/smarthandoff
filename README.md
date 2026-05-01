@@ -4,7 +4,8 @@ Zero-friction AI session continuity across any tool, any rate limit.
 
 When Claude hits a rate limit, one command switches you to Gemini CLI with full context — goal, files changed, blocker, decisions — in under 30 seconds.
 
-**Zero LLM calls. Fully deterministic. No API keys. No cost.**
+**Zero LLM calls by default. Fully deterministic. No API keys. No cost.**
+Optional `--summarize` flag for LLM-enhanced handoffs via your existing Claude login or any provider API key.
 
 ---
 
@@ -17,12 +18,13 @@ When Claude hits a rate limit, one command switches you to Gemini CLI with full 
 5. [Data Model](#data-model)
 6. [Quick Start](#quick-start)
 7. [Commands](#commands)
-8. [Adapters](#adapters)
-9. [Claude Code Plugin](#claude-code-plugin)
-10. [Monorepo Structure](#monorepo-structure)
-11. [Project Storage](#project-storage)
-12. [Implementation Plan & Status](#implementation-plan--status)
-13. [Development](#development)
+8. [Summarization Pass](#summarization-pass)
+9. [Adapters](#adapters)
+10. [Claude Code Plugin](#claude-code-plugin)
+11. [Monorepo Structure](#monorepo-structure)
+12. [Project Storage](#project-storage)
+13. [Implementation Plan & Status](#implementation-plan--status)
+14. [Development](#development)
 
 ---
 
@@ -337,8 +339,10 @@ One command: snapshot current session → compress → deliver to target tool.
 --budget <tokens>    Override token budget
 --include-diffs      Include full file diffs in output
 --preview            Print briefing to stdout without delivering
---trigger <trigger>  manual | rate_limit | precompact (for analytics, default: manual)
---session-id <id>    Use a specific Claude session instead of the most recent
+--trigger <trigger>       manual | rate_limit | precompact (for analytics, default: manual)
+--session-id <id>         Use a specific Claude session instead of the most recent
+--summarize               LLM summarization pass for higher-quality handoff (see Summarization Pass)
+--summarize-model <model> Model for the summarization pass (default: sonnet)
 ```
 
 **Examples:**
@@ -349,6 +353,8 @@ smarthandoff route --auto
 smarthandoff route --to gemini --preview
 smarthandoff route --to gemini --include-diffs
 smarthandoff route --to gemini --budget 30000
+smarthandoff route --to gemini --summarize
+smarthandoff route --to gemini --summarize --summarize-model sonnet
 ```
 
 **Expected output:**
@@ -381,8 +387,10 @@ Same as `route` up through the merge step — reads, collects, merges, saves. Do
 --session-id <id>    Specific Claude session ID
 --budget <tokens>    Override token budget
 --note <text>        Append a manual note to the handoff
---source <source>    manual | precompact | stop (for analytics)
---print              Also print a summary to stdout
+--source <source>         manual | precompact | stop (for analytics)
+--print                   Also print a summary to stdout
+--summarize               LLM summarization pass for higher-quality handoff
+--summarize-model <model> Model for the summarization pass (default: sonnet)
 ```
 
 **Examples:**
@@ -391,6 +399,7 @@ smarthandoff snapshot
 smarthandoff snapshot --mode lean
 smarthandoff snapshot --note "focus on the auth module next"
 smarthandoff snapshot --print
+smarthandoff snapshot --summarize --print
 ```
 
 **Expected output:**
@@ -503,6 +512,41 @@ SMART HANDOFFS — /Users/you/my-project
 Total: 3 handoffs
 Run: smarthandoff resume --id <id> --to <tool>
 ```
+
+---
+
+## Summarization Pass
+
+The `--summarize` flag adds an optional LLM pass after deterministic extraction. It feeds the full cleaned session transcript to an LLM and asks it to rewrite every text field — goal title, decisions with rationale, file summaries, blockers, next steps — producing a handoff that reads like a PR description rather than a pattern-match dump.
+
+**What it improves:**
+
+| Field | Deterministic (default) | With `--summarize` |
+|-------|------------------------|---------------------|
+| `goal.title` | First 80 chars of first user message | "Build smart-handoff CLI: JSONL extraction + LLM summarize pass" |
+| `goal.description` | Raw first message | 3–5 sentence summary of what was built, the approach, and current status |
+| `decisions` | Pattern-matched sentences ("decided", "rather than") | Real choices including implicit ones, each with a rationale |
+| `blockers` | Last user message if error keywords present | The actual unresolved problem, or empty if session ended cleanly |
+| `filesChanged[].summary` | First non-comment line of written code | "Adds goal extraction from first user message in the JSONL transcript" |
+| `nextSteps` | Often missing | Specific and ordered — names the file, function, or command |
+
+**How it works:**
+
+1. Reconstructs the full conversation as clean `User: / Assistant:` turns (after noise stripping)
+2. Sends it to the LLM along with the deterministically extracted handoff as a structural scaffold
+3. LLM rewrites only the text fields — file paths, timestamps, IDs are never touched
+4. Falls back silently to the deterministic handoff on any failure
+
+**Current provider: `claude-cli`**
+
+Uses the `claude` binary already installed by Claude Code. No additional API key needed — uses your existing login via keychain auth.
+
+```bash
+smarthandoff route --to gemini --summarize
+smarthandoff route --to gemini --summarize --summarize-model sonnet
+```
+
+**Upcoming: multi-provider support** — see [Implementation Plan & Status](#implementation-plan--status) for the roadmap to add Anthropic SDK, Gemini, and OpenAI as provider options.
 
 ---
 
@@ -774,52 +818,176 @@ The project was designed in four milestones, targeting complete delivery in 8 we
 
 ### Milestone 1 — Complete ✅
 
-Everything in the original Milestone 1–4 plan that makes up a working v1.0 is done:
-
 **Core library (`@smarthandoff/core`):**
 - [x] `types.ts` — full Handoff schema (all interfaces)
 - [x] `schema.ts` — Zod validation with `validateHandoff()`
-- [x] `stripNoise.ts` — JSONL event filter (removes tool_result, reads, bash stdout)
-- [x] `fromClaudeLogs.ts` — JSONL parser: goal, files, blocker, decisions, `inferFileSummary`
-- [x] `fromGit.ts` — git status + diff stats builder
-- [x] `fromMemory.ts` — Claude auto-memory reader
+- [x] `stripNoise.ts` — JSONL event filter; keeps Write/Edit assistant blocks even when no text content
+- [x] `fromClaudeLogs.ts` — JSONL parser: goal, files, blocker, decisions, `inferFileSummary`; system tag stripping; internal path filtering
+- [x] `fromGit.ts` — git status + diff stats; filters `.smarthandoff/` artifacts
+- [x] `fromMemory.ts` — Claude auto-memory reader; path encoding fix for spaces
 - [x] `fromManual.ts` — user notes builder
 - [x] `merge.ts` — Partial<Handoff>[] combiner with dedup
-- [x] `budgetAllocator.ts` — per-tool token budgets, proportional scaling
-- [x] `compress.ts` — section-level compression with sentence-boundary truncation
-- [x] `compressDiffs.ts` — diff-aware text compression
+- [x] `budgetAllocator.ts` — per-tool token budgets; proportional scaling with `--budget` override
+- [x] `compress.ts` — file-fits-budget fast path; summary-first budget allocation; no unnecessary truncation
+- [x] `compressDiffs.ts` — sentence-boundary truncation (`compressText`); no mid-word cuts
 - [x] All 6 adapters: `gemini`, `codex`, `cursor`, `claude`, `chatgpt`, `generic`
+- [x] `enhance/prompt.ts` — full conversation reconstruction + LLM summarization prompt
+- [x] `enhance/providers/claudeCli.ts` — subprocess provider via `claude --print`; `structured_output` + markdown fallback parsing
+- [x] `enhance/summarize.ts` — LLM enhancement orchestrator; graceful fallback on failure
 - [x] `policy/evaluator.ts` — should-handoff policy engine
 - [x] 42 passing unit tests across 5 suites
 
+**Bug fixes shipped:**
+- [x] JSONL format: tool calls are content blocks inside `assistant` events, not separate `tool_use` events
+- [x] Claude Code path encoding: replace both `/` AND whitespace with `-`
+- [x] `--json-schema` dropped from claude CLI (triggers multi-turn agentic flow → timeouts); replaced with `--system-prompt` + regex fallback
+- [x] Fixed sections in `budgetAllocator` now scale proportionally with `--budget` override
+- [x] `compressFiles` no longer truncates summaries when file fits in per-file token cap
+
 **CLI (`@smarthandoff/cli`):**
 - [x] `init` — project setup + hook registration + gitignore
-- [x] `route` — end-to-end: collect → merge → compress → deliver
-- [x] `snapshot` — collect + save without routing
+- [x] `route` — collect → merge → [summarize] → compress → deliver; `--summarize`, `--summarize-model`
+- [x] `snapshot` — collect + save; `--summarize`, `--summarize-model`
 - [x] `resume` — load saved handoff → deliver to any target
 - [x] `analyze` — token allocation visualization + confidence scores
 - [x] `list` — show all saved handoffs
-- [x] `toolDetector.ts` — PATH-based tool detection
+- [x] `toolDetector.ts` — PATH-based tool detection including `claude`
 - [x] `analytics.ts` — event emission to `events.jsonl`
 - [x] All delivery modes: pipe, clipboard, file-write, two-part-clipboard
 - [x] `--auto` flag with ranked tool detection
-- [x] Claude Code path encoding fix (replaces `/` and whitespace with `-`)
-- [x] Relative path output + internal file filter
 
 **Claude Code plugin:**
 - [x] `manifest.json` — plugin definition
-- [x] `/handoff` skill — in-editor briefing generator
+- [x] `/handoff` skill — in-editor briefing generator with `--summarize` deep-understanding mode
 - [x] `stopFailure.sh` — auto-route on rate limit
 - [x] `preCompact.sh` — async snapshot on context fill
 
-### What's Next
+### Milestone 2 — Multi-Provider Summarization (Planned)
+
+Add Anthropic SDK, Gemini, and OpenAI as pluggable providers for the `--summarize` pass, so users can bring their own API key instead of relying on the `claude` CLI binary.
+
+See the detailed design in the section below.
+
+- [ ] `enhance/providers/index.ts` — provider factory + auto-detection from env vars
+- [ ] `enhance/providers/anthropic.ts` — Anthropic SDK with tool-use structured output
+- [ ] `enhance/providers/gemini.ts` — Google AI SDK with `responseSchema` JSON mode
+- [ ] `enhance/providers/openai.ts` — OpenAI SDK with `response_format` JSON schema mode
+- [ ] `--summarize-provider` flag on `route` and `snapshot`
+- [ ] Auto-detect provider from env vars (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`)
+- [ ] Provider-specific default models (`gemini-2.0-flash`, `gpt-4o-mini`, `claude-sonnet-4-6`)
+- [ ] Config file: `summarize.provider`, `summarize.model`
+
+### Milestone 3 — Publishing & Distribution (Planned)
 
 - [ ] `npm publish @smarthandoff/core@0.1.0` and `@smarthandoff/cli@0.1.0`
 - [ ] Submit `smart-handoff` plugin to Claude Code marketplace
-- [ ] End-to-end smoke test on a real Claude Code → Gemini CLI handoff
-- [ ] `summarize.ts` — optional LLM-powered summarization pass (via Anthropic SDK)
 - [ ] Blog post: "Smart Handoff — zero-friction AI session continuity"
-- [ ] VS Code extension surface (post-v1)
+
+### Milestone 4 — Extended Surfaces (Planned)
+
+- [ ] VS Code extension with sidebar UI
+- [ ] JetBrains plugin
+- [ ] GitHub Action: auto-snapshot on PR open
+
+---
+
+## Multi-Provider Summarization — Design
+
+The `--summarize` flag currently uses the `claude` CLI binary (zero-config for Claude Code users). This section documents the planned extension to support any LLM provider via API key.
+
+### Provider interface
+
+Every provider implements the same contract:
+
+```typescript
+// packages/core/src/enhance/providers/index.ts
+export interface LLMProvider {
+  call(prompt: string, schema: object): Promise<EnhancedHandoff>;
+}
+
+export type ProviderName = 'claude-cli' | 'anthropic' | 'gemini' | 'openai';
+```
+
+### Provider selection
+
+**Priority order when `--summarize` is passed with no `--summarize-provider`:**
+
+1. `ANTHROPIC_API_KEY` env var → `anthropic` provider
+2. `GEMINI_API_KEY` or `GOOGLE_API_KEY` env var → `gemini` provider
+3. `OPENAI_API_KEY` env var → `openai` provider
+4. `claude` binary in PATH → `claude-cli` provider
+5. None found → error with helpful message listing what to set
+
+Explicit override always wins: `--summarize-provider gemini`
+
+### CLI flags
+
+```
+--summarize                         Enable LLM summarization pass
+--summarize-provider <p>            claude-cli | anthropic | gemini | openai
+--summarize-model <model>           Override default model for the chosen provider
+```
+
+API keys are **never passed as flags** — always via environment variables:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export GEMINI_API_KEY=AIza...
+export OPENAI_API_KEY=sk-...
+```
+
+### Provider defaults
+
+| Provider | Default model | Structured output mechanism |
+|----------|--------------|----------------------------|
+| `claude-cli` | `sonnet` | `--system-prompt` + markdown extraction fallback |
+| `anthropic` | `claude-sonnet-4-6` | `tools` parameter with JSON schema (tool-use mode) |
+| `gemini` | `gemini-2.0-flash` | `responseMimeType: 'application/json'` + `responseSchema` |
+| `openai` | `gpt-4o-mini` | `response_format: { type: 'json_schema', json_schema }` |
+
+### Optional dependencies
+
+Providers are **optional peer dependencies** — only install what you use. The SDK is lazy-loaded with a helpful install hint if missing:
+
+```
+# For Anthropic SDK provider:
+npm install @anthropic-ai/sdk
+
+# For Gemini provider:
+npm install @google/generative-ai
+
+# For OpenAI provider:
+npm install openai
+```
+
+If you run `--summarize-provider gemini` without the SDK installed:
+```
+✗ Gemini provider requires: npm install @google/generative-ai
+  Or switch to: --summarize-provider claude-cli (no install needed)
+```
+
+### Config file integration
+
+```yaml
+# .smarthandoff/config.yaml
+summarize:
+  provider: gemini          # auto-detect if omitted
+  model: gemini-2.0-flash   # provider default if omitted
+  # API key via GEMINI_API_KEY env var — never in config
+```
+
+### New files
+
+```
+packages/core/src/enhance/
+├── providers/
+│   ├── claudeCli.ts     ← existing
+│   ├── anthropic.ts     ← new: @anthropic-ai/sdk tool-use structured output
+│   ├── gemini.ts        ← new: @google/generative-ai responseSchema JSON mode
+│   ├── openai.ts        ← new: openai response_format JSON schema mode
+│   └── index.ts         ← new: factory(options) → LLMProvider + auto-detect logic
+└── summarize.ts         ← update: use factory instead of hardcoded claudeCli
+```
 
 ---
 
