@@ -68,19 +68,11 @@ const LAUNCH_BINS: Record<string, string> = {
   claude: 'claude',
 };
 
-// Flags passed directly to the binary (no pipe — keeps stdin as the real TTY)
+// Flags passed directly to the binary — no pipe, keeps stdin as the real TTY
 const LAUNCH_ARGS: Partial<Record<string, string[]>> = {
   gemini: ['--skip-trust'],
   codex:  [],
   claude: [],
-};
-
-// Hint printed to the terminal just before the CLI opens so the user knows
-// how to load the handoff context from inside the interactive session.
-const LAUNCH_HINTS: Partial<Record<string, string>> = {
-  gemini: '  💡 Context saved to .smarthandoff/latest.md\n     Type  @.smarthandoff/latest.md  in the gemini prompt to load it.',
-  codex:  '  💡 Context saved to .smarthandoff/latest.md',
-  claude: '  💡 Context saved to .smarthandoff/latest.md\n     Type  @.smarthandoff/latest.md  to load it.',
 };
 
 function isBinaryAvailable(bin: string): boolean {
@@ -88,13 +80,17 @@ function isBinaryAvailable(bin: string): boolean {
   catch { return false; }
 }
 
-export function launchCli(target: string): boolean {
+export async function launchCli(target: string, content: string): Promise<boolean> {
   const bin = LAUNCH_BINS[target];
   const args = LAUNCH_ARGS[target];
-  const hint = LAUNCH_HINTS[target];
   if (!bin || !args) return false;
   if (!isBinaryAvailable(bin)) return false;
-  if (hint) process.stderr.write('\n' + hint + '\n\n');
+
+  // Copy formatted prompt to clipboard so the user can paste it as their first message
+  await copyToClipboard(content);
+  process.stderr.write('\n  ✓ Handoff copied to clipboard\n');
+  process.stderr.write(`  Paste it (Cmd+V / Ctrl+V) as your first message in ${target}.\n\n`);
+
   spawnSync(bin, args, { stdio: 'inherit' });
   return true;
 }

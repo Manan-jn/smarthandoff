@@ -133,7 +133,7 @@ export const routeCommand = new Command('route')
     await deliver(output, { suppressOutput: !!options.launch });
 
     if (options.launch) {
-      const launched = launchCli(target);
+      const launched = await launchCli(target, output.text);
       if (!launched) {
         console.error(`  ✗ --launch: '${target}' CLI not found in PATH or not launchable`);
         if (output.launchCommand) console.log(`  Run manually: ${output.launchCommand}`);
