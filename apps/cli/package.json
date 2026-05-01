@@ -1,12 +1,16 @@
 {
   "name": "@smarthandoff/cli",
   "version": "0.1.0",
-  "description": "Smart Handoff CLI — smarthandoff command",
+  "description": "Smart Handoff CLI — zero-friction AI session continuity across Claude, Gemini, Codex, Cursor",
   "type": "module",
   "bin": {
     "smarthandoff": "./dist/index.js",
     "shoff": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --clean",
     "dev": "tsup src/index.ts --format esm --watch",
@@ -27,5 +31,26 @@
     "typescript": "^5.4.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "gemini",
+    "codex",
+    "cursor",
+    "handoff",
+    "session",
+    "continuity",
+    "rate-limit",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Manan-jn/smarthandoff.git"
+  },
+  "homepage": "https://github.com/Manan-jn/smarthandoff#readme",
+  "bugs": {
+    "url": "https://github.com/Manan-jn/smarthandoff/issues"
   }
 }

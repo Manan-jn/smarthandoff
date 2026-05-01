@@ -11,6 +11,10 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --dts --watch",
@@ -21,6 +25,16 @@
     "js-yaml": "^4.1.0",
     "zod": "^3.23.0"
   },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.90.0",
+    "@google/generative-ai": ">=0.20.0",
+    "openai": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": { "optional": true },
+    "@google/generative-ai": { "optional": true },
+    "openai": { "optional": true }
+  },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
     "@google/generative-ai": "^0.24.1",
@@ -30,5 +44,26 @@
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "gemini",
+    "codex",
+    "cursor",
+    "handoff",
+    "session",
+    "continuity",
+    "rate-limit",
+    "context-window"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Manan-jn/smarthandoff.git"
+  },
+  "homepage": "https://github.com/Manan-jn/smarthandoff#readme",
+  "bugs": {
+    "url": "https://github.com/Manan-jn/smarthandoff/issues"
   }
 }

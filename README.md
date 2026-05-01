@@ -725,11 +725,28 @@ This creates a lean checkpoint before compaction so you never lose state.
 
 ### Install
 
-```
-/plugin install smart-handoff
+**Option A — one-liner (recommended):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Manan-jn/smarthandoff/main/plugins/claude-code/install.sh | bash
 ```
 
-Or via `smarthandoff init` which registers the hooks in `~/.claude/settings.json`.
+**Option B — manual:**
+
+```bash
+git clone https://github.com/Manan-jn/smarthandoff /tmp/smarthandoff
+cp -r /tmp/smarthandoff/plugins/claude-code ~/.claude/plugins/smart-handoff
+```
+
+**Option C — via CLI (registers hooks only, no plugin UI):**
+
+```bash
+smarthandoff init
+```
+
+This registers the `StopFailure` and `PreCompact` hooks in `~/.claude/settings.json` without the `/handoff` skill.
+
+After install, restart Claude Code. The `/handoff` skill will be available, and hooks fire automatically on rate limit and context fill.
 
 ---
 
