@@ -1,7 +1,8 @@
-import type { Handoff } from '../types.js';
-
 export interface ClaudeLogEvent {
-  type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'summary';
+  type:
+    | 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'summary'
+    | 'system' | 'last-prompt' | 'pr-link' | 'attachment'
+    | 'ai-title' | 'file-history-snapshot' | 'queue-operation';
   message?: {
     role?: string;
     content: string | ContentBlock[];
@@ -9,6 +10,21 @@ export interface ClaudeLogEvent {
   timestamp?: string;
   uuid?: string;
   parentUuid?: string;
+  isSidechain?: number;
+  gitBranch?: string;
+  cwd?: string;
+  sessionId?: string;
+  // last-prompt event fields
+  lastPrompt?: string;
+  leafUuid?: string;
+  // pr-link event fields
+  url?: string;
+  // system/compact_boundary fields
+  preTokens?: number;
+  postTokens?: number;
+  // attachment event fields
+  attachmentType?: string;
+  content?: unknown;
 }
 
 export interface ContentBlock {
@@ -24,6 +40,7 @@ const SKIP_TOOLS = new Set(['Read', 'Bash', 'LS', 'Glob', 'Grep', 'WebFetch', 'W
 
 export function stripNoise(events: ClaudeLogEvent[]): ClaudeLogEvent[] {
   return events.filter(event => {
+    if (event.isSidechain) return false;
     if (event.type === 'tool_result') return false;
     if (event.type === 'summary') return true;
     if (event.type === 'user') return true;

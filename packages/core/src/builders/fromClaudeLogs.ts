@@ -1,7 +1,15 @@
 import { promises as fs } from 'node:fs';
-import type { Handoff, HandoffGoal, HandoffDecision, HandoffBlocker, HandoffFileChange, HandoffNextStep } from '../types.js';
+import type { Handoff, HandoffGoal, HandoffDecision, HandoffBlocker, HandoffFileChange, HandoffNextStep, HandoffSessionSegment } from '../types.js';
 import { extractTitle, extractText, stripSystemTags } from '../utils.js';
 import { stripNoise, type ClaudeLogEvent, type ContentBlock } from '../compress/stripNoise.js';
+import {
+  findCompactBoundaries,
+  extractCompactSummary,
+  extractLastPrompts,
+  extractPrLinks,
+  extractTodoPendingTasks,
+  getCurrentBranch,
+} from './sessionUtils.js';
 
 // Generated adapter output files that should not appear in filesChanged
 const GENERATED_FILENAMES = new Set(['GEMINI.md', 'AGENTS.md', 'cursor-rules.mdc', 'chatgpt-system.md']);
@@ -15,8 +23,12 @@ function isInternalPath(filePath: string): boolean {
 
 function relativizeAndFilter(filePath: string, projectRoot?: string): string | null {
   if (isInternalPath(filePath)) return null;
-  if (projectRoot && filePath.startsWith(projectRoot + '/')) {
-    return filePath.slice(projectRoot.length + 1);
+  if (projectRoot) {
+    if (filePath.startsWith(projectRoot + '/')) {
+      return filePath.slice(projectRoot.length + 1);
+    }
+    // path is outside projectRoot — skip it
+    return null;
   }
   return filePath;
 }
@@ -41,7 +53,6 @@ function cleanSlice(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const truncated = text.slice(0, maxChars);
 
-  // Cut before any code block that starts in the slice
   const codeBlockIdx = truncated.indexOf('```');
   if (codeBlockIdx > maxChars * 0.3) {
     const beforeCode = truncated.slice(0, codeBlockIdx);
@@ -50,11 +61,9 @@ function cleanSlice(text: string, maxChars: number): string {
     return beforeCode.trim();
   }
 
-  // Prefer paragraph break
   const paraBreak = truncated.lastIndexOf('\n\n');
   if (paraBreak > maxChars * 0.5) return truncated.slice(0, paraBreak).trim();
 
-  // Fall back to sentence end
   const lastPeriod = truncated.search(/[.!?][^.!?]*$/);
   if (lastPeriod > maxChars * 0.5) return truncated.slice(0, lastPeriod + 1).trim();
 
@@ -77,33 +86,62 @@ export async function fromClaudeLogs(
   }
 
   const lines = raw.trim().split('\n').filter(Boolean);
-  const events: ClaudeLogEvent[] = lines
+  const allEvents: ClaudeLogEvent[] = lines
     .map(l => {
       try { return JSON.parse(l) as ClaudeLogEvent; } catch { return null; }
     })
     .filter((e): e is ClaudeLogEvent => e !== null);
 
-  const signalEvents = stripNoise(events);
+  // Session segmentation: find compact boundaries and split
+  const boundaries = findCompactBoundaries(allEvents);
+  const lastBoundaryIdx = boundaries.length > 0 ? boundaries[boundaries.length - 1]! : -1;
+  const currentSegmentEvents = lastBoundaryIdx >= 0
+    ? allEvents.slice(lastBoundaryIdx + 1)
+    : allEvents;
+
+  // Build session history from compact summaries (Scenario B: post-compaction)
+  const sessionSegments: HandoffSessionSegment[] = boundaries
+    .map(bi => {
+      const boundary = allEvents[bi]!;
+      return {
+        summary: extractCompactSummary(allEvents, bi),
+        timestamp: boundary.timestamp ?? new Date().toISOString(),
+        gitBranch: boundary.gitBranch,
+        preTokens: boundary.preTokens ?? 0,
+        postTokens: boundary.postTokens ?? 0,
+      };
+    })
+    .filter(s => s.summary.length > 0);
+
+  // Signal events: only from current segment (post-last-compact)
+  const signalEvents = stripNoise(currentSegmentEvents);
   const limited = options.maxMessages
     ? signalEvents.slice(-options.maxMessages)
     : signalEvents;
 
-  // Extract goal from first user message
-  const firstUserEvent = limited.find(e => e.type === 'user');
-  const firstContent = firstUserEvent?.message?.content;
-  const firstText = stripSystemTags(extractText(firstContent));
+  // Goal: prefer last-prompt event (verbatim user intent, no IDE noise injected)
+  // Fallback: first user message in current segment
+  const lastPrompts = extractLastPrompts(allEvents);
+  const goalText = lastPrompts.length > 0
+    ? lastPrompts[lastPrompts.length - 1]!
+    : stripSystemTags(extractText(signalEvents.find(e => e.type === 'user')?.message?.content));
+
+  // Goal progression: how the session's intent evolved (Scenario A: multiple last-prompts)
+  const goalProgression = lastPrompts.length > 1 ? lastPrompts : [];
 
   const goal: HandoffGoal = {
     id: 'goal_1',
-    title: extractTitle(firstText),
-    description: cleanSlice(firstText, 2000),
+    title: extractTitle(goalText),
+    description: cleanSlice(goalText, 2000),
     status: 'in_progress',
     sourceMessageIndex: 0,
   };
 
-  // Extract file changes from Write/Edit tool calls embedded in assistant events
-  const filesChanged: HandoffFileChange[] = [];
-  const seenPaths = new Set<string>();
+  // PR links
+  const prLinks = extractPrLinks(allEvents);
+
+  // File changes: last-edit-wins (Map keyed by absolute path, overwrite on repeat)
+  const fileMap = new Map<string, HandoffFileChange>();
   const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
   for (const event of limited) {
@@ -114,11 +152,10 @@ export async function fromClaudeLogs(
       if (block.type !== 'tool_use' || !WRITE_TOOLS.has(block.name ?? '')) continue;
       const input = block.input as { file_path?: string; path?: string } | undefined;
       const filePath = input?.file_path || input?.path;
-      if (filePath && !seenPaths.has(filePath)) {
+      if (filePath) {
         const rel = relativizeAndFilter(filePath, options.projectRoot);
         if (rel !== null) {
-          seenPaths.add(filePath);
-          filesChanged.push({
+          fileMap.set(filePath, {
             path: rel,
             status: 'modified',
             summary: inferFileSummary(block.name ?? '', block.input as Record<string, unknown>),
@@ -130,11 +167,20 @@ export async function fromClaudeLogs(
       }
     }
   }
+  const filesChanged = [...fileMap.values()];
 
-  // Extract blocker from last messages
+  // Next steps: prefer todo_reminder pending tasks over heuristic extraction
+  const todoTasks = extractTodoPendingTasks(allEvents);
+  let nextSteps: HandoffNextStep[] = todoTasks.map((task, i) => ({
+    id: `next_${i + 1}`,
+    description: task,
+    priority: i === 0 ? ('high' as const) : ('medium' as const),
+    specificAction: task,
+  }));
+
+  // Blocker extraction from last messages in current segment
   const lastUserEvent = [...limited].reverse().find(e => e.type === 'user');
   const lastAssistantEvent = [...limited].reverse().find(e => e.type === 'assistant');
-
   const lastUserText = stripSystemTags(extractText(lastUserEvent?.message?.content));
   const lastAssistantText = extractText(lastAssistantEvent?.message?.content);
 
@@ -151,27 +197,32 @@ export async function fromClaudeLogs(
     });
   }
 
-  // Extract decisions
-  const decisions = extractDecisions(limited);
-
-  // Extract next step
-  const nextSteps: HandoffNextStep[] = [];
-  const nextStepText = blockers[0]?.suggestedNextSteps || extractNextStep(lastAssistantText);
-  if (nextStepText) {
-    nextSteps.push({
-      id: 'next_1',
-      description: nextStepText,
-      priority: 'high',
-      specificAction: nextStepText,
-    });
+  // Fall back to heuristic next step only when no todo tasks
+  if (nextSteps.length === 0) {
+    const nextStepText = blockers[0]?.suggestedNextSteps || extractNextStep(lastAssistantText);
+    if (nextStepText) {
+      nextSteps.push({
+        id: 'next_1',
+        description: nextStepText,
+        priority: 'high',
+        specificAction: nextStepText,
+      });
+    }
   }
 
+  const decisions = extractDecisions(limited);
+  const gitBranch = getCurrentBranch(allEvents);
+
   return {
-    goals: firstText ? [goal] : [],
+    goals: goalText ? [goal] : [],
     filesChanged,
     blockers,
     decisions,
     nextSteps,
+    ...(prLinks.length > 0 ? { prLinks } : {}),
+    ...(sessionSegments.length > 0 ? { sessionSegments } : {}),
+    ...(goalProgression.length > 0 ? { goalProgression } : {}),
+    ...(gitBranch ? { context: { stack: [], gitBranch } } : {}),
     sources: [{
       tool: 'claude-code',
       transcriptPath,
@@ -186,17 +237,19 @@ const DECISION_PATTERNS = [
   /\b(the reason is|rationale|trade-?off|the fix is|root cause)\b/i,
 ];
 
-// Sentences that are clearly not decisions — meta-commentary, fragments, questions
 const DECISION_NOISE = [
-  /^[),"'\s*]/,                         // starts with fragment punctuation or markdown bold **
-  /^\*\*/,                              // markdown bold heading
-  /\?$/,                                // questions
+  /^[),"'\s*]/,
+  /^\*\*/,
+  /\?$/,
   /^(The|This|That|It|There|Here)\s+(is|are|was|were|will|would|can|could|should|has|have)\b/i,
-  /\bthe handoff\b/i,                   // meta-commentary about the handoff tool itself
-  /\bextract(or|ion|ing|ed)\b/i,        // talking about extraction logic
-  /\btoken budget\b/i,                  // token budget explanations
-  /\b(summary|files changed|next steps|decisions made)\b/i, // label headers
-  /^[A-Z\s]+\*\*\s*—/,                 // "HEADING** —" pattern (markdown section headers)
+  /^I('ll| will)\b/i,
+  /^(Now|Let|First|Then|Next|Also|Note)\b/i,
+  /^(Paste|Run|Add|Check|Look|See)\b/i,
+  /\bthe handoff\b/i,
+  /\bextract(or|ion|ing|ed)\b/i,
+  /\btoken budget\b/i,
+  /\b(summary|files changed|next steps|decisions made)\b/i,
+  /^[A-Z\s]+\*\*\s*—/,
 ];
 
 function extractDecisions(events: ClaudeLogEvent[]): HandoffDecision[] {
@@ -214,7 +267,6 @@ function extractDecisions(events: ClaudeLogEvent[]): HandoffDecision[] {
       if (s.length < 50 || s.length > 300) continue;
       if (!DECISION_PATTERNS.some(p => p.test(s))) continue;
       if (DECISION_NOISE.some(p => p.test(s))) continue;
-      // Require sentence starts with capital letter (complete sentence, not fragment)
       if (!/^[A-Z"']/.test(s)) continue;
 
       const key = s.slice(0, 60).toLowerCase();
@@ -242,11 +294,8 @@ function extractBlocker(lastUser: string, lastAssistant: string): string {
   ];
 
   const combined = `${lastUser} ${lastAssistant}`;
-  const hasError = errorPatterns.some(p => p.test(combined));
+  if (!errorPatterns.some(p => p.test(combined))) return '';
 
-  if (!hasError) return '';
-
-  // Prefer assistant text (has the error detail), fall back to user
   const source = lastAssistant.length > 50 ? lastAssistant : lastUser;
   return source.slice(0, 500).trim();
 }

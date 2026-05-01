@@ -54,11 +54,20 @@ export interface HandoffProjectContext {
   buildCommand?: string;
   claudeMdContent?: string;
   agentsMdContent?: string;
+  gitBranch?: string;
   packageJson?: {
     name: string;
     version: string;
     dependencies: Record<string, string>;
   };
+}
+
+export interface HandoffSessionSegment {
+  summary: string;
+  timestamp: string;
+  gitBranch?: string;
+  preTokens: number;
+  postTokens: number;
 }
 
 export interface HandoffSource {
@@ -108,4 +117,7 @@ export interface Handoff {
   rawTokenCount: number;
   cachedOutputs?: Partial<Record<TargetTool, AdapterOutput>>;
   metadata?: Record<string, unknown>;
+  prLinks?: string[];
+  sessionSegments?: HandoffSessionSegment[];
+  goalProgression?: string[];
 }

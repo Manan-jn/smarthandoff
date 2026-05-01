@@ -46,6 +46,18 @@ export function merge(
     if (partial.sources) {
       acc.sources.push(...partial.sources);
     }
+
+    if (partial.prLinks) {
+      acc.prLinks = [...new Set([...(acc.prLinks ?? []), ...partial.prLinks])];
+    }
+
+    if (partial.sessionSegments) {
+      acc.sessionSegments = [...(acc.sessionSegments ?? []), ...partial.sessionSegments];
+    }
+
+    if (partial.goalProgression) {
+      acc.goalProgression = [...(acc.goalProgression ?? []), ...partial.goalProgression];
+    }
   }
 
   // Deduplicate sources by tool

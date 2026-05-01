@@ -2,7 +2,7 @@ import { Command, Option } from 'commander';
 import { promises as fs } from 'node:fs';
 import { toAdapter, type TargetTool, TOOL_BUDGETS, summarize } from '@smarthandoff/core';
 import { loadConfig } from '../config.js';
-import { deliver } from '../deliver/index.js';
+import { deliver, launchCli } from '../deliver/index.js';
 import { autoDetectTarget, detectTools } from '../detect/toolDetector.js';
 import { buildHandoff } from './_buildHandoff.js';
 import { emitEvent } from '../analytics.js';
@@ -14,6 +14,7 @@ export const routeCommand = new Command('route')
   .option('--budget <tokens>', 'override token budget', parseInt)
   .option('--include-diffs', 'include full file diffs')
   .option('--preview', 'preview briefing without delivering')
+  .option('--launch', 'launch the target CLI with the handoff directly')
   .option('--save-only', 'capture and save without delivering to any tool')
   .option('--summary', 'print stats after saving (use with --save-only)')
   .option('--note <text>', 'inject a manual note into the handoff')
@@ -130,7 +131,13 @@ export const routeCommand = new Command('route')
     console.log(`\nDelivering to ${target}...`);
     await deliver(output);
 
-    if (output.launchCommand) {
+    if (options.launch) {
+      const launched = launchCli(target, output.text);
+      if (!launched) {
+        console.error(`  ✗ --launch: '${target}' CLI not found in PATH or not launchable`);
+        if (output.launchCommand) console.log(`  Run manually: ${output.launchCommand}`);
+      }
+    } else if (output.launchCommand) {
       console.log(`\nRun: ${output.launchCommand}`);
     }
 

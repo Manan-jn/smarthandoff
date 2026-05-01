@@ -18,6 +18,8 @@ export interface SectionBudgets {
   nextSteps: number;
   context: number;
   claudeMd: number;
+  sessionHistory: number;
+  goalProgression: number;
 }
 
 export function allocateBudget(
@@ -50,20 +52,24 @@ export function allocateBudget(
   if (target === 'codex') {
     return {
       ...FIXED,
-      decisions:    Math.floor(remaining * 0.15),
-      filesChanged: Math.floor(remaining * 0.60),
-      context:      Math.floor(remaining * 0.20),
-      claudeMd:     0,
+      decisions:       Math.floor(remaining * 0.15),
+      filesChanged:    Math.floor(remaining * 0.55),
+      context:         Math.floor(remaining * 0.20),
+      claudeMd:        0,
+      sessionHistory:  0,
+      goalProgression: Math.floor(remaining * 0.10),
     };
   }
 
   if (target === 'claude') {
     return {
       ...FIXED,
-      decisions:    Math.floor(remaining * 0.30),
-      filesChanged: Math.floor(remaining * 0.40),
-      context:      Math.floor(remaining * 0.30),
-      claudeMd:     0,
+      decisions:       Math.floor(remaining * 0.25),
+      filesChanged:    Math.floor(remaining * 0.35),
+      context:         Math.floor(remaining * 0.25),
+      claudeMd:        0,
+      sessionHistory:  Math.floor(remaining * 0.10),
+      goalProgression: Math.floor(remaining * 0.05),
     };
   }
 
@@ -71,19 +77,23 @@ export function allocateBudget(
     const claudeMdTokens = estimateTokens(handoff.context.claudeMdContent || '');
     return {
       ...FIXED,
-      decisions:    Math.floor(remaining * 0.20),
-      filesChanged: Math.floor(remaining * 0.35),
-      context:      Math.floor(remaining * 0.15),
-      claudeMd:     Math.min(claudeMdTokens, Math.floor(remaining * 0.30)),
+      decisions:       Math.floor(remaining * 0.15),
+      filesChanged:    Math.floor(remaining * 0.30),
+      context:         Math.floor(remaining * 0.10),
+      claudeMd:        Math.min(claudeMdTokens, Math.floor(remaining * 0.25)),
+      sessionHistory:  Math.floor(remaining * 0.15),
+      goalProgression: Math.floor(remaining * 0.05),
     };
   }
 
   // Default: cursor, chatgpt, generic
   return {
     ...FIXED,
-    decisions:    Math.floor(remaining * 0.25),
-    filesChanged: Math.floor(remaining * 0.40),
-    context:      Math.floor(remaining * 0.25),
-    claudeMd:     Math.floor(remaining * 0.10),
+    decisions:       Math.floor(remaining * 0.20),
+    filesChanged:    Math.floor(remaining * 0.35),
+    context:         Math.floor(remaining * 0.20),
+    claudeMd:        Math.floor(remaining * 0.10),
+    sessionHistory:  Math.floor(remaining * 0.10),
+    goalProgression: Math.floor(remaining * 0.05),
   };
 }

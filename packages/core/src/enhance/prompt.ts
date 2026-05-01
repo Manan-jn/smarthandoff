@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import type { Handoff } from '../types.js';
 import { stripNoise, type ClaudeLogEvent, type ContentBlock } from '../compress/stripNoise.js';
-import { extractText, stripSystemTags } from '../utils.js';
+import { extractText, stripSystemTags, redactSecrets } from '../utils.js';
 
 export const ENHANCE_SCHEMA = {
   type: 'object',
@@ -126,7 +126,7 @@ async function reconstructConversation(transcriptPath: string): Promise<string> 
 
   for (const event of signal) {
     if (event.type === 'user') {
-      const text = stripSystemTags(extractText(event.message?.content));
+      const text = redactSecrets(stripSystemTags(extractText(event.message?.content)));
       if (text.trim()) turns.push(`User:\n${text.trim()}`);
     } else if (event.type === 'assistant') {
       const content = event.message?.content;

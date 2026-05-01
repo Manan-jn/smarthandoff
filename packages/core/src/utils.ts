@@ -61,6 +61,15 @@ export function truncateDiff(diff: string, budget: number): string {
   return result.join('\n');
 }
 
+export function redactSecrets(text: string): string {
+  return text
+    .replace(/AIzaSy[A-Za-z0-9_-]{33}/g, '[REDACTED:gemini-key]')
+    .replace(/sk-proj-[A-Za-z0-9_-]{20,}/g, '[REDACTED:openai-key]')
+    .replace(/sk-ant-[A-Za-z0-9_-]{20,}/g, '[REDACTED:anthropic-key]')
+    .replace(/npm_[A-Za-z0-9]{20,}/g, '[REDACTED:npm-token]')
+    .replace(/gh[pousr]_[A-Za-z0-9]{20,}/g, '[REDACTED:github-token]');
+}
+
 export function getRelativeTime(isoDate: string): string {
   const diff = Date.now() - new Date(isoDate).getTime();
   const minutes = Math.floor(diff / 60000);

@@ -1,4 +1,4 @@
-import type { Handoff } from '../types.js';
+import type { Handoff, HandoffSessionSegment } from '../types.js';
 import type { SectionBudgets } from './budgetAllocator.js';
 import { estimateTokens } from '../utils.js';
 import { compressDiff, compressText } from './compressDiffs.js';
@@ -28,6 +28,22 @@ export function compress(handoff: Handoff, budgets: SectionBudgets): Handoff {
     },
   };
 
+  // Compress session history: trim oldest segments first if over budget
+  if (handoff.sessionSegments?.length) {
+    compressed.sessionSegments = compressSessionSegments(
+      handoff.sessionSegments,
+      budgets.sessionHistory
+    );
+  }
+
+  // Compress goal progression: keep first + last N items to preserve arc
+  if (handoff.goalProgression?.length) {
+    compressed.goalProgression = compressGoalProgression(
+      handoff.goalProgression,
+      budgets.goalProgression
+    );
+  }
+
   return compressed;
 }
 
@@ -37,7 +53,6 @@ function compressDecisions(
 ): Handoff['decisions'] {
   if (!decisions.length) return [];
 
-  // Sort by confidence desc, take what fits
   const sorted = [...decisions].sort((a, b) => b.confidence - a.confidence);
   const result = [];
   let remaining = budget;
@@ -61,7 +76,6 @@ function compressFiles(
 ): Handoff['filesChanged'] {
   if (!files.length) return [];
 
-  // Sort by importance
   const importanceOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
   const sorted = [...files].sort((a, b) =>
     (importanceOrder[a.importance] ?? 2) - (importanceOrder[b.importance] ?? 2)
@@ -76,13 +90,11 @@ function compressFiles(
     const fileTokens = estimateTokens(JSON.stringify(file));
 
     if (fileTokens <= perFile && fileTokens <= remaining) {
-      // File fits — no compression needed
       result.push(file);
       remaining -= fileTokens;
       continue;
     }
 
-    // File is over budget — compress diff heavily, keep summary intact if possible
     const fileBudget = Math.min(perFile, remaining);
     const summaryTokens = estimateTokens(file.summary);
     const diffBudget = Math.max(0, fileBudget - summaryTokens - 20);
@@ -93,6 +105,55 @@ function compressFiles(
       summary: compressText(file.summary, Math.min(summaryTokens, fileBudget - 20)),
     });
     remaining -= fileBudget;
+  }
+
+  return result;
+}
+
+function compressSessionSegments(
+  segments: HandoffSessionSegment[],
+  budget: number
+): HandoffSessionSegment[] {
+  if (budget <= 0) return [];
+
+  // Trim oldest segments first — most recent history is most relevant
+  const result: HandoffSessionSegment[] = [];
+  let remaining = budget;
+
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i]!;
+    const tokens = estimateTokens(seg.summary);
+    if (remaining <= 0) break;
+    result.unshift({
+      ...seg,
+      summary: compressText(seg.summary, Math.min(tokens, remaining)),
+    });
+    remaining -= tokens;
+  }
+
+  return result;
+}
+
+function compressGoalProgression(goals: string[], budget: number): string[] {
+  if (budget <= 0) return [];
+  if (goals.length <= 1) return goals;
+
+  const result: string[] = [];
+  let remaining = budget;
+
+  // Always include first goal (original intent)
+  const firstTokens = estimateTokens(goals[0]!);
+  if (firstTokens <= remaining) {
+    result.push(goals[0]!);
+    remaining -= firstTokens;
+  }
+
+  // Fill from most recent backwards
+  for (let i = goals.length - 1; i >= 1; i--) {
+    const tokens = estimateTokens(goals[i]!);
+    if (remaining <= 0) break;
+    result.splice(1, 0, goals[i]!);
+    remaining -= tokens;
   }
 
   return result;

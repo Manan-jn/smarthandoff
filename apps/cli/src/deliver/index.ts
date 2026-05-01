@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { spawnSync, execSync } from 'node:child_process';
 import path from 'node:path';
 import type { AdapterOutput } from '@smarthandoff/core';
 
@@ -54,4 +55,24 @@ export async function deliver(
 async function copyToClipboard(text: string): Promise<void> {
   const { default: clipboardy } = await import('clipboardy');
   await clipboardy.write(text);
+}
+
+const LAUNCH_COMMANDS: Partial<Record<string, (content: string) => string[]>> = {
+  gemini: (c) => ['gemini', '--skip-trust', '-p', c],
+  codex:  (c) => ['codex', '-q', c],
+  claude: (c) => ['claude', '-p', c],
+};
+
+function isBinaryAvailable(bin: string): boolean {
+  try { execSync(`which ${bin}`, { stdio: 'ignore' }); return true; }
+  catch { return false; }
+}
+
+export function launchCli(target: string, content: string): boolean {
+  const builder = LAUNCH_COMMANDS[target];
+  if (!builder) return false;
+  const [bin, ...args] = builder(content);
+  if (!bin || !isBinaryAvailable(bin)) return false;
+  spawnSync(bin, args, { stdio: 'inherit' });
+  return true;
 }

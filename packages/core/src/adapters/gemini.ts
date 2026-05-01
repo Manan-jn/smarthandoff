@@ -21,6 +21,35 @@ export function toGemini(handoff: Handoff, options: AdapterOptions = {}): Adapte
   }
   lines.push('');
 
+  // Goal progression (how the session's focus evolved)
+  if (compressed.goalProgression && compressed.goalProgression.length > 1) {
+    lines.push('### How the goal evolved');
+    for (const g of compressed.goalProgression) {
+      lines.push(`- ${g}`);
+    }
+    lines.push('');
+  }
+
+  // Active PR
+  if (handoff.prLinks && handoff.prLinks.length > 0) {
+    lines.push('### Active PR');
+    for (const link of handoff.prLinks) {
+      lines.push(link);
+    }
+    lines.push('');
+  }
+
+  // Session history (prior compact summaries — what happened before context reset)
+  if (compressed.sessionSegments && compressed.sessionSegments.length > 0) {
+    lines.push('### Session history (prior context windows)');
+    for (const seg of compressed.sessionSegments) {
+      const branch = seg.gitBranch ? ` [${seg.gitBranch}]` : '';
+      lines.push(`**${seg.timestamp.slice(0, 10)}${branch}**`);
+      lines.push(seg.summary);
+      lines.push('');
+    }
+  }
+
   // Files changed
   if (compressed.filesChanged.length > 0) {
     lines.push('### Files changed');
@@ -39,7 +68,7 @@ export function toGemini(handoff: Handoff, options: AdapterOptions = {}): Adapte
   // Blocker
   if (compressed.blockers.length > 0) {
     lines.push('### Open blocker');
-    const b = compressed.blockers[0];
+    const b = compressed.blockers[0]!;
     lines.push(b.description);
     if (b.errorMessage) lines.push(`Error: \`${b.errorMessage}\``);
     if (b.errorLocation) lines.push(`Location: ${b.errorLocation}`);
@@ -58,7 +87,7 @@ export function toGemini(handoff: Handoff, options: AdapterOptions = {}): Adapte
   // Next step
   if (compressed.nextSteps.length > 0) {
     lines.push('### Next step');
-    lines.push(compressed.nextSteps[0].specificAction || compressed.nextSteps[0].description);
+    lines.push(compressed.nextSteps[0]!.specificAction || compressed.nextSteps[0]!.description);
     lines.push('');
   }
 
@@ -80,8 +109,6 @@ export function toGemini(handoff: Handoff, options: AdapterOptions = {}): Adapte
   }
 
   const text = lines.join('\n');
-
-  // GEMINI.md for persistent project context
   const geminiMd = generateGeminiMd(handoff);
 
   return {
@@ -94,7 +121,7 @@ export function toGemini(handoff: Handoff, options: AdapterOptions = {}): Adapte
       content: geminiMd,
       isTemporary: false,
     }],
-    launchCommand: `cat .smarthandoff/latest.md | gemini -i "You are resuming a coding task. Context is above."`,
+    launchCommand: `cat .smarthandoff/latest.md | gemini --skip-trust -p "You are resuming a coding task. Context is above."`,
   };
 }
 
