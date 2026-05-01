@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { program } from 'commander';
 import { initCommand } from './commands/init.js';
-import { snapshotCommand } from './commands/snapshot.js';
 import { resumeCommand } from './commands/resume.js';
 import { routeCommand } from './commands/route.js';
 import { analyzeCommand } from './commands/analyze.js';
@@ -14,7 +13,6 @@ program
   .version('0.1.0');
 
 program.addCommand(initCommand);
-program.addCommand(snapshotCommand);
 program.addCommand(resumeCommand);
 program.addCommand(routeCommand);
 program.addCommand(analyzeCommand);
