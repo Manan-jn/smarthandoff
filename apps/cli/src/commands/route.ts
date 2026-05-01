@@ -70,12 +70,15 @@ export const routeCommand = new Command('route')
     await fs.writeFile('.smarthandoff/latest.json', JSON.stringify(finalHandoff, null, 2));
 
     // Generate adapter output
+    const DEBUG_BUDGET = 100_000;
+    const effectiveBudget = (options.budget as number | undefined) ?? (mode === 'debug' ? DEBUG_BUDGET : undefined);
     const output = toAdapter(finalHandoff, target, {
-      tokenBudget: options.budget as number | undefined,
+      tokenBudget: effectiveBudget,
       mode,
     });
 
-    console.log(`  ✓ Compressed: ${output.tokenCount.toLocaleString()} tokens (budget: ${(TOOL_BUDGETS[target] ?? 10000).toLocaleString()})`);
+    const displayBudget = effectiveBudget ?? TOOL_BUDGETS[target] ?? 10_000;
+    console.log(`  ✓ Compressed: ${output.tokenCount.toLocaleString()} tokens (budget: ${displayBudget.toLocaleString()})`);
 
     if (options.preview) {
       console.log('\n--- PREVIEW ---');
