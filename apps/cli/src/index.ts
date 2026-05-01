@@ -3,7 +3,6 @@ import { program } from 'commander';
 import { initCommand } from './commands/init.js';
 import { resumeCommand } from './commands/resume.js';
 import { routeCommand } from './commands/route.js';
-import { analyzeCommand } from './commands/analyze.js';
 import { listCommand } from './commands/list.js';
 
 program
@@ -15,7 +14,6 @@ program
 program.addCommand(initCommand);
 program.addCommand(resumeCommand);
 program.addCommand(routeCommand);
-program.addCommand(analyzeCommand);
 program.addCommand(listCommand);
 
 program.parse();
