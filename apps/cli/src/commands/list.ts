@@ -18,12 +18,14 @@ export const listCommand = new Command('list')
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, parseInt(options.limit as string));
 
+    const idWidth = Math.max(...recent.map(h => h.id.length));
+
     console.log(`\nSMART HANDOFFS — ${process.cwd()}\n`);
 
     for (const h of recent) {
       const age = getRelativeTime(h.createdAt);
       const title = h.goals[0]?.title?.slice(0, 50) || 'No goal';
-      console.log(`  ${h.id.slice(0, 25)}  ${age.padEnd(12)}  ${title}`);
+      console.log(`  ${h.id.padEnd(idWidth)}  ${age.padEnd(12)}  ${title}`);
     }
 
     console.log(`\nTotal: ${handoffs.length} handoffs`);
