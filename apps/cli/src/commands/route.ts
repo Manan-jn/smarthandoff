@@ -16,9 +16,7 @@ export const routeCommand = new Command('route')
   .option('--preview', 'preview briefing without delivering')
   .option('--trigger <trigger>', 'trigger source (manual|rate_limit|precompact)', 'manual')
   .option('--session-id <id>', 'specific session to route from')
-  .option('--summarize', 'LLM summarization pass for higher-quality handoff')
-  .option('--summarize-provider <p>', 'claude-cli | anthropic | gemini | openai (auto-detects from env vars)')
-  .option('--summarize-model <model>', 'model override for summarization provider')
+  .option('--summarize [provider/model]', 'LLM pass: auto | claude-cli | anthropic | gemini | openai | provider/model')
   .action(async (options) => {
     const config = await loadConfig();
 
@@ -51,12 +49,13 @@ export const routeCommand = new Command('route')
 
     // Optional LLM summarization pass
     let finalHandoff = handoff;
-    if (options.summarize) {
-      const provider = (options.summarizeProvider as string | undefined) ?? 'auto';
-      console.log(`\n  Running LLM summarization (provider: ${provider})...`);
+    const sumOpts = parseSummarize(options.summarize as boolean | string | undefined);
+    if (sumOpts !== null) {
+      const displayProvider = typeof options.summarize === 'string' ? options.summarize : 'auto';
+      console.log(`\n  Running LLM summarization (${displayProvider})...`);
       finalHandoff = await summarize(handoff, {
-        provider: options.summarizeProvider as import('@smarthandoff/core').ProviderName | undefined,
-        model: options.summarizeModel as string | undefined,
+        provider: sumOpts.provider as import('@smarthandoff/core').ProviderName | undefined,
+        model: sumOpts.model,
       });
       if (finalHandoff !== handoff) {
         console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
@@ -101,3 +100,13 @@ export const routeCommand = new Command('route')
       tokenCount: output.tokenCount,
     });
   });
+
+function parseSummarize(val: boolean | string | undefined): { provider?: string; model?: string } | null {
+  if (val === undefined || val === false) return null;
+  if (val === true) return {};
+  const [provider, model] = String(val).split('/');
+  return {
+    provider: provider?.trim() || undefined,
+    model: model?.trim() || undefined,
+  };
+}
