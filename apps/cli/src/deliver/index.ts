@@ -62,18 +62,25 @@ async function copyToClipboard(text: string): Promise<void> {
 }
 
 // Binary name for PATH detection
-const LAUNCH_BINS: Partial<Record<string, string>> = {
+const LAUNCH_BINS: Record<string, string> = {
   gemini: 'gemini',
   codex:  'codex',
   claude: 'claude',
 };
 
-// Shell commands used to launch each CLI.
-// latest.md is already written by deliver() — pipe it via stdin + fixed system prompt.
-const LAUNCH_SHELL: Partial<Record<string, string>> = {
-  gemini: `cat .smarthandoff/latest.md | gemini --skip-trust -p "You are resuming a coding task. The context above is a handoff from a previous session. Acknowledge it and ask what to work on next."`,
-  codex:  `cat .smarthandoff/latest.md | codex`,
-  claude: `cat .smarthandoff/latest.md | claude -p "You are resuming a coding task. Context is above."`,
+// Flags passed directly to the binary (no pipe — keeps stdin as the real TTY)
+const LAUNCH_ARGS: Partial<Record<string, string[]>> = {
+  gemini: ['--skip-trust'],
+  codex:  [],
+  claude: [],
+};
+
+// Hint printed to the terminal just before the CLI opens so the user knows
+// how to load the handoff context from inside the interactive session.
+const LAUNCH_HINTS: Partial<Record<string, string>> = {
+  gemini: '  💡 Context saved to .smarthandoff/latest.md\n     Type  @.smarthandoff/latest.md  in the gemini prompt to load it.',
+  codex:  '  💡 Context saved to .smarthandoff/latest.md',
+  claude: '  💡 Context saved to .smarthandoff/latest.md\n     Type  @.smarthandoff/latest.md  to load it.',
 };
 
 function isBinaryAvailable(bin: string): boolean {
@@ -83,9 +90,11 @@ function isBinaryAvailable(bin: string): boolean {
 
 export function launchCli(target: string): boolean {
   const bin = LAUNCH_BINS[target];
-  const shellCmd = LAUNCH_SHELL[target];
-  if (!bin || !shellCmd) return false;
+  const args = LAUNCH_ARGS[target];
+  const hint = LAUNCH_HINTS[target];
+  if (!bin || !args) return false;
   if (!isBinaryAvailable(bin)) return false;
-  spawnSync(shellCmd, { stdio: 'inherit', shell: true });
+  if (hint) process.stderr.write('\n' + hint + '\n\n');
+  spawnSync(bin, args, { stdio: 'inherit' });
   return true;
 }
