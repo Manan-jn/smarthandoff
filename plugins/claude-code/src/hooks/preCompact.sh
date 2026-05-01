@@ -5,7 +5,7 @@
 
 if command -v smarthandoff &> /dev/null; then
   # Run in background — don't block compaction
-  smarthandoff snapshot --mode lean --source precompact &
+  smarthandoff route --save-only --mode lean --source precompact &
   echo "Smart Handoff: background snapshot started (pid $!)" >&2
 fi
 

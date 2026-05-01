@@ -17,7 +17,7 @@ if [ "$ERROR" = "rate_limit" ] || echo "$ERROR" | grep -qi "rate.limit"; then
   echo "⚡ Rate limit hit — generating Smart Handoff..." >&2
 
   if command -v smarthandoff &> /dev/null; then
-    smarthandoff route --auto --trigger rate_limit --mode lean
+    smarthandoff route --trigger rate_limit --mode lean
   else
     # Fallback: copy last context to clipboard
     TRANSCRIPT=$(echo "$INPUT" | node -e "
