@@ -1,0 +1,7 @@
+{
+  "name": "@smarthandoff/plugin-claude-code",
+  "version": "1.0.0",
+  "description": "Smart Handoff Claude Code plugin — /handoff skill + auto-trigger hooks",
+  "private": true,
+  "main": "src/manifest.json"
+}
