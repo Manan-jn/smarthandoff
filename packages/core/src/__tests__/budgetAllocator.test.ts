@@ -47,6 +47,26 @@ describe('allocateBudget', () => {
     expect(total).toBeLessThanOrEqual(5000);
   });
 
+  it('never produces negative section budgets for tiny budgets', () => {
+    const budgets = allocateBudget(EMPTY_HANDOFF, 'gemini', 500);
+    expect(budgets.goal).toBeGreaterThanOrEqual(0);
+    expect(budgets.decisions).toBeGreaterThanOrEqual(0);
+    expect(budgets.filesChanged).toBeGreaterThanOrEqual(0);
+    expect(budgets.blockers).toBeGreaterThanOrEqual(0);
+    expect(budgets.nextSteps).toBeGreaterThanOrEqual(0);
+    expect(budgets.context).toBeGreaterThanOrEqual(0);
+    expect(budgets.claudeMd).toBeGreaterThanOrEqual(0);
+  });
+
+  it('total never exceeds override budget for any small value', () => {
+    for (const budget of [200, 500, 1000, 5000]) {
+      const budgets = allocateBudget(EMPTY_HANDOFF, 'gemini', budget);
+      const total = budgets.goal + budgets.decisions + budgets.filesChanged +
+        budgets.blockers + budgets.nextSteps + budgets.context + budgets.claudeMd;
+      expect(total).toBeLessThanOrEqual(budget);
+    }
+  });
+
   it('gemini allocates more to filesChanged than codex proportionally', () => {
     const gemini = allocateBudget(EMPTY_HANDOFF, 'gemini');
     const codex = allocateBudget(EMPTY_HANDOFF, 'codex');

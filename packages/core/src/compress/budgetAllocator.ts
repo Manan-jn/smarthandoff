@@ -27,16 +27,25 @@ export function allocateBudget(
 ): SectionBudgets {
   const totalBudget = overrideBudget ?? TOOL_BUDGETS[target];
 
-  // Scale fixed sections with budget — default targets have small budgets so caps are tight,
-  // but when a large override is passed the full content should flow through untruncated.
-  const scale = Math.max(1, totalBudget / 10_000);
-  const FIXED = {
+  // Scale fixed sections proportionally. For large budgets (>=10K) scale them up
+  // so more content flows through. For small budgets shrink them down, but cap the
+  // fixed block at 40% of total so the variable sections never go negative.
+  const scale = totalBudget / 10_000;
+  const FIXED_RAW = {
     goal:      Math.floor(400 * scale),
     blockers:  Math.floor(300 * scale),
     nextSteps: Math.floor(200 * scale),
   };
+  const fixedCap = Math.floor(totalBudget * 0.40);
+  const fixedRawTotal = FIXED_RAW.goal + FIXED_RAW.blockers + FIXED_RAW.nextSteps;
+  const fixedScale = fixedRawTotal > fixedCap ? fixedCap / fixedRawTotal : 1;
+  const FIXED = {
+    goal:      Math.max(0, Math.floor(FIXED_RAW.goal * fixedScale)),
+    blockers:  Math.max(0, Math.floor(FIXED_RAW.blockers * fixedScale)),
+    nextSteps: Math.max(0, Math.floor(FIXED_RAW.nextSteps * fixedScale)),
+  };
   const fixedTotal = FIXED.goal + FIXED.blockers + FIXED.nextSteps;
-  const remaining = totalBudget - fixedTotal;
+  const remaining = Math.max(0, totalBudget - fixedTotal);
 
   if (target === 'codex') {
     return {
