@@ -15,7 +15,7 @@ export interface LLMProvider {
 export const PROVIDER_DEFAULTS: Record<ProviderName, string> = {
   'claude-cli': 'sonnet',
   'anthropic': 'claude-sonnet-4-6',
-  'gemini': 'gemini-2.0-flash',
+  'gemini': 'gemini-2.5-flash',
   'openai': 'gpt-4o-mini',
 };
 
@@ -45,7 +45,7 @@ export function autoDetectProvider(): ProviderName {
     'No summarization provider found.\n' +
     'Options:\n' +
     '  Set ANTHROPIC_API_KEY   → uses Anthropic SDK (claude-sonnet-4-6)\n' +
-    '  Set GEMINI_API_KEY      → uses Gemini (gemini-2.0-flash)\n' +
+    '  Set GEMINI_API_KEY      → uses Gemini (gemini-2.5-flash)\n' +
     '  Set OPENAI_API_KEY      → uses OpenAI (gpt-4o-mini)\n' +
     '  Install claude CLI      → uses claude --print (no API key needed)'
   );
