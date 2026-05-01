@@ -9,7 +9,6 @@ export const resumeCommand = new Command('resume')
   .option('--id <handoffId>', 'handoff ID (default: most recent)')
   .option('--to <tool>', 'target tool: gemini | codex | cursor | claude | chatgpt | generic', 'generic')
   .option('--budget <tokens>', 'override token budget', parseInt)
-  .option('--mode <mode>', 'lean | rich', 'rich')
   .option('--copy', 'force copy to clipboard')
   .option('--print', 'print briefing to stdout instead of delivering')
   .action(async (options) => {
@@ -18,14 +17,13 @@ export const resumeCommand = new Command('resume')
       : await loadLatestHandoff();
 
     if (!handoff) {
-      console.error('No handoff found. Run: smarthandoff snapshot first.');
+      console.error('No handoff found. Run: smarthandoff route --save-only first.');
       process.exit(1);
     }
 
     const target = options.to as TargetTool;
     const output = toAdapter(handoff, target, {
       tokenBudget: options.budget as number | undefined,
-      mode: options.mode as 'lean' | 'rich' | 'debug' | undefined,
     });
 
     await deliver(output, { forceClipboard: options.copy as boolean, forcePrint: options.print as boolean });

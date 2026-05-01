@@ -10,8 +10,7 @@ import { emitEvent } from '../analytics.js';
 export const routeCommand = new Command('route')
   .description('Snapshot current session and deliver to target tool (one command)')
   .option('--to <tool>', 'target tool: gemini | codex | cursor | claude | chatgpt | generic')
-  .option('--auto', 'auto-detect best available tool')
-  .option('--mode <mode>', 'lean | rich', 'rich')
+  .option('--mode <mode>', 'lean | rich | debug', 'rich')
   .option('--budget <tokens>', 'override token budget', parseInt)
   .option('--include-diffs', 'include full file diffs')
   .option('--preview', 'preview briefing without delivering')
@@ -25,7 +24,7 @@ export const routeCommand = new Command('route')
 
     // Determine target tool
     let target: TargetTool;
-    if (options.auto || !options.to) {
+    if (!options.to) {
       const detected = await detectTools();
       console.log('\nDetecting available AI tools...');
       for (const tool of ['gemini', 'codex', 'cursor', 'claude']) {
