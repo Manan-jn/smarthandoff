@@ -13,3 +13,13 @@ export * from './compress/compress.js';
 export * from './adapters/index.js';
 export * from './policy/evaluator.js';
 export { summarize, type SummarizeOptions } from './enhance/summarize.js';
+export {
+  autoDetectProvider,
+  createProvider,
+  resolveApiKey,
+  PROVIDER_DEFAULTS,
+  PROVIDER_SDK_INSTALL,
+  type LLMProvider,
+  type ProviderName,
+  type ProviderOptions,
+} from './enhance/providers/index.js';
