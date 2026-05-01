@@ -5,7 +5,7 @@ import type { AdapterOutput } from '@smarthandoff/core';
 
 export async function deliver(
   output: AdapterOutput,
-  opts: { forceClipboard?: boolean; forcePrint?: boolean; cwd?: string } = {}
+  opts: { forceClipboard?: boolean; forcePrint?: boolean; suppressOutput?: boolean; cwd?: string } = {}
 ): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
 
@@ -23,6 +23,10 @@ export async function deliver(
       await fs.writeFile(filePath, f.content, 'utf8');
     }
   }
+
+  // suppressOutput: file is written but no stdout/clipboard delivery.
+  // Used when --launch will handle delivery directly via the target CLI.
+  if (opts.suppressOutput) return;
 
   if (opts.forcePrint) {
     process.stdout.write(output.text);
@@ -57,10 +61,19 @@ async function copyToClipboard(text: string): Promise<void> {
   await clipboardy.write(text);
 }
 
-const LAUNCH_COMMANDS: Partial<Record<string, (content: string) => string[]>> = {
-  gemini: (c) => ['gemini', '--skip-trust', '-p', c],
-  codex:  (c) => ['codex', '-q', c],
-  claude: (c) => ['claude', '-p', c],
+// Binary name for PATH detection
+const LAUNCH_BINS: Partial<Record<string, string>> = {
+  gemini: 'gemini',
+  codex:  'codex',
+  claude: 'claude',
+};
+
+// Shell commands used to launch each CLI.
+// latest.md is already written by deliver() — pipe it via stdin + fixed system prompt.
+const LAUNCH_SHELL: Partial<Record<string, string>> = {
+  gemini: `cat .smarthandoff/latest.md | gemini --skip-trust -p "You are resuming a coding task. The context above is a handoff from a previous session. Acknowledge it and ask what to work on next."`,
+  codex:  `cat .smarthandoff/latest.md | codex`,
+  claude: `cat .smarthandoff/latest.md | claude -p "You are resuming a coding task. Context is above."`,
 };
 
 function isBinaryAvailable(bin: string): boolean {
@@ -68,11 +81,11 @@ function isBinaryAvailable(bin: string): boolean {
   catch { return false; }
 }
 
-export function launchCli(target: string, content: string): boolean {
-  const builder = LAUNCH_COMMANDS[target];
-  if (!builder) return false;
-  const [bin, ...args] = builder(content);
-  if (!bin || !isBinaryAvailable(bin)) return false;
-  spawnSync(bin, args, { stdio: 'inherit' });
+export function launchCli(target: string): boolean {
+  const bin = LAUNCH_BINS[target];
+  const shellCmd = LAUNCH_SHELL[target];
+  if (!bin || !shellCmd) return false;
+  if (!isBinaryAvailable(bin)) return false;
+  spawnSync(shellCmd, { stdio: 'inherit', shell: true });
   return true;
 }

@@ -129,10 +129,11 @@ export const routeCommand = new Command('route')
     }
 
     console.log(`\nDelivering to ${target}...`);
-    await deliver(output);
+    // When --launch is set, suppress stdout/clipboard output — the CLI takes over.
+    await deliver(output, { suppressOutput: !!options.launch });
 
     if (options.launch) {
-      const launched = launchCli(target, output.text);
+      const launched = launchCli(target);
       if (!launched) {
         console.error(`  ✗ --launch: '${target}' CLI not found in PATH or not launchable`);
         if (output.launchCommand) console.log(`  Run manually: ${output.launchCommand}`);
