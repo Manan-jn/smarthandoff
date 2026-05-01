@@ -1,5 +1,4 @@
 import { execSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Handoff, HandoffFileChange, Importance } from '../types.js';
 
@@ -56,7 +55,7 @@ export async function fromGit(
       };
     });
 
-  // Get diff stats
+  // Get diff stats for uncommitted files
   for (const file of filesChanged) {
     try {
       const diffStat = execSync(
@@ -68,6 +67,41 @@ export async function fromGit(
       file.linesRemoved = parseInt(parts[1] ?? '0') || 0;
     } catch { /* new/untracked */ }
   }
+
+  // Supplement with stats from recently committed files (last 30 commits)
+  // so files already committed this session still get accurate line counts
+  try {
+    const logNumstat = execSync(
+      'git log --diff-filter=ACMR --numstat --format="" -30',
+      { cwd: repoPath, encoding: 'utf8' }
+    );
+    const commitStatMap = new Map<string, { linesAdded: number; linesRemoved: number }>();
+    for (const line of logNumstat.trim().split('\n')) {
+      const parts = line.split('\t');
+      if (parts.length < 3) continue;
+      const filePath = parts[2]!.trim();
+      if (!commitStatMap.has(filePath)) {
+        commitStatMap.set(filePath, {
+          linesAdded: parseInt(parts[0] ?? '0') || 0,
+          linesRemoved: parseInt(parts[1] ?? '0') || 0,
+        });
+      }
+    }
+    // Add committed files not already in filesChanged (from git status)
+    for (const [filePath, stats] of commitStatMap) {
+      if (filePath.match(/\.?smarthandoff\//)) continue;
+      if (!filesChanged.some(f => f.path === filePath)) {
+        filesChanged.push({
+          path: filePath,
+          status: 'modified',
+          summary: '',
+          importance: scoreImportance(filePath),
+          linesAdded: stats.linesAdded,
+          linesRemoved: stats.linesRemoved,
+        });
+      }
+    }
+  } catch { /* ignore */ }
 
   // Get diffs if requested
   if (options.includeDiffs) {

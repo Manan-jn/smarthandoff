@@ -1,4 +1,4 @@
-import type { Handoff, HandoffGoal, HandoffDecision, HandoffFileChange, HandoffBlocker, HandoffNextStep, HandoffProjectContext, HandoffSource } from '../types.js';
+import type { Handoff, HandoffFileChange, HandoffSource } from '../types.js';
 import { estimateTokens } from '../utils.js';
 
 interface MergeMetadata {
@@ -24,7 +24,7 @@ export function merge(
       for (const file of partial.filesChanged) {
         const existingIdx = acc.filesChanged.findIndex(f => f.path === file.path);
         if (existingIdx >= 0) {
-          acc.filesChanged[existingIdx] = { ...acc.filesChanged[existingIdx], ...file };
+          acc.filesChanged[existingIdx] = mergeFileChange(acc.filesChanged[existingIdx]!, file);
         } else {
           acc.filesChanged.push(file);
         }
@@ -92,6 +92,24 @@ function deduplicateSources(sources: HandoffSource[]): HandoffSource[] {
     seen.add(key);
     return true;
   });
+}
+
+function mergeFileChange(existing: HandoffFileChange, incoming: HandoffFileChange): HandoffFileChange {
+  return {
+    ...existing,
+    ...incoming,
+    // Prefer non-empty summary
+    summary: incoming.summary || existing.summary,
+    // Prefer non-zero line counts
+    linesAdded: incoming.linesAdded || existing.linesAdded,
+    linesRemoved: incoming.linesRemoved || existing.linesRemoved,
+    // Prefer non-empty diff
+    diff: incoming.diff || existing.diff,
+    // Merge testsImpacted arrays
+    testsImpacted: [
+      ...new Set([...(existing.testsImpacted ?? []), ...(incoming.testsImpacted ?? [])]),
+    ],
+  };
 }
 
 function calculateConfidence(handoff: Handoff): number {

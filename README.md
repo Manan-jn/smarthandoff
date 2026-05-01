@@ -1001,6 +1001,50 @@ pnpm --filter @smarthandoff/core build
 pnpm --filter @smarthandoff/cli build
 ```
 
+### End-to-end CLI smoke tests
+
+Run these after `pnpm build` from the repo root:
+
+```bash
+# Basic snapshot (deterministic extraction, no LLM)
+node apps/cli/dist/index.js snapshot --print
+
+# Snapshot with LLM summarization — claude-cli (no API key needed, uses existing Claude Code login)
+node apps/cli/dist/index.js snapshot --summarize --print
+
+# Snapshot with specific provider
+ANTHROPIC_API_KEY=<key> node apps/cli/dist/index.js snapshot --summarize --summarize-provider anthropic --print
+GEMINI_API_KEY=<key>    node apps/cli/dist/index.js snapshot --summarize --summarize-provider gemini --print
+OPENAI_API_KEY=<key>    node apps/cli/dist/index.js snapshot --summarize --summarize-provider openai --print
+
+# Override model for a provider
+GEMINI_API_KEY=<key> node apps/cli/dist/index.js snapshot --summarize --summarize-provider gemini --summarize-model gemini-2.0-flash --print
+
+# Route to a specific tool (preview without delivering)
+node apps/cli/dist/index.js route --to gemini --preview
+node apps/cli/dist/index.js route --to claude --preview
+node apps/cli/dist/index.js route --to codex --preview
+
+# Route with auto-detect
+node apps/cli/dist/index.js route --auto --preview
+
+# Route + summarization in one command
+GEMINI_API_KEY=<key> node apps/cli/dist/index.js route --to gemini --summarize --summarize-provider gemini --preview
+
+# Analyze token budget for last handoff
+node apps/cli/dist/index.js analyze
+
+# List saved handoffs
+node apps/cli/dist/index.js list
+
+# Resume from latest snapshot
+node apps/cli/dist/index.js resume --to gemini --preview
+node apps/cli/dist/index.js resume --to claude --preview
+
+# Init (creates .smarthandoff/, registers PreCompact + StopFailure hooks)
+node apps/cli/dist/index.js init
+```
+
 **Adding a new adapter:**
 1. Add the target name to `TargetTool` in `packages/core/src/types.ts`
 2. Add a budget entry to `TOOL_BUDGETS` in `budgetAllocator.ts`
