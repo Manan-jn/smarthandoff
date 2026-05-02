@@ -68,6 +68,6 @@ export function toClaude(handoff: Handoff, options: AdapterOptions = {}): Adapte
     deliveryMethod: 'clipboard',
     targetTool: 'claude',
     tokenCount: estimateTokens(text),
-    launchCommand: 'claude  # paste the briefing as your first message',
+    launchCommand: `claude`,
   };
 }

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { spawnSync, execSync } from 'node:child_process';
 import path from 'node:path';
 import type { AdapterOutput } from '@smarthandoff/core';
+import chalk from 'chalk';
 
 export async function deliver(
   output: AdapterOutput,
@@ -41,17 +42,17 @@ export async function deliver(
     case 'clipboard':
     case 'file-write':
       await copyToClipboard(output.text);
-      console.error(`✓ Briefing copied to clipboard (${output.tokenCount.toLocaleString()} tokens)`);
+      console.error(chalk.green('✓ Briefing copied to clipboard') + chalk.dim(` (${output.tokenCount.toLocaleString()} tokens)`));
       break;
 
     case 'two-part-clipboard':
       await copyToClipboard(output.text);
-      console.error('\n📋 TWO-PART CLIPBOARD — ChatGPT needs two pastes:');
-      console.error('\n1. SYSTEM PROMPT (paste in the system field):');
-      console.error('─'.repeat(50));
+      console.error('\n' + chalk.bold('📋 TWO-PART CLIPBOARD') + chalk.dim(' — ChatGPT needs two pastes:'));
+      console.error('\n' + chalk.bold('1. SYSTEM PROMPT') + chalk.dim(' (paste in the system field):'));
+      console.error(chalk.dim('─'.repeat(50)));
       console.error(output.systemPrompt ?? '');
-      console.error('─'.repeat(50));
-      console.error('\n2. FIRST MESSAGE: Already copied to clipboard. Paste with Cmd+V.');
+      console.error(chalk.dim('─'.repeat(50)));
+      console.error('\n' + chalk.bold('2. FIRST MESSAGE:') + chalk.dim(' Already copied to clipboard. Paste with Cmd+V.'));
       break;
   }
 }
@@ -88,8 +89,8 @@ export async function launchCli(target: string, content: string): Promise<boolea
 
   // Copy formatted prompt to clipboard so the user can paste it as their first message
   await copyToClipboard(content);
-  process.stderr.write('\n  ✓ Handoff copied to clipboard\n');
-  process.stderr.write(`  Paste it (Cmd+V / Ctrl+V) as your first message in ${target}.\n\n`);
+  process.stderr.write('\n' + chalk.green('  ✓ Handoff copied to clipboard') + '\n');
+  process.stderr.write(chalk.dim(`  Paste it (Cmd+V / Ctrl+V) as your first message in ${target}.`) + '\n\n');
 
   spawnSync(bin, args, { stdio: 'inherit' });
   return true;

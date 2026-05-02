@@ -1,6 +1,6 @@
 {
   "name": "@smarthandoff/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Smart Handoff CLI — zero-friction AI session continuity across Claude, Gemini, Codex, Cursor",
   "type": "module",
   "bin": {

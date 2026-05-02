@@ -1,37 +1,54 @@
 # @smarthandoff/cli
 
-CLI for [Smart Handoff](https://github.com/Manan-jn/smarthandoff) — zero-friction AI session continuity.
+**Zero-friction AI session continuity.** When Claude hits a rate limit or context limit, one command switches you to Gemini, Codex, or another AI tool with your full session context — goal, files changed, decisions, blocker — in under 30 seconds.
 
-When Claude hits a rate limit, one command switches you to Gemini CLI (or Codex, Claude) with full context — goal, files changed, blocker, decisions — in under 30 seconds.
+```bash
+# Claude hit a rate limit? Run this:
+smarthandoff route --to gemini --launch
+# → copies handoff to clipboard, opens gemini interactively
+# → paste with Cmd+V and continue where you left off
+```
 
-**Zero LLM calls by default. Fully deterministic. No API keys required.**
+**No API keys required by default. Zero LLM calls. Fully deterministic.**  
+Optional `--summarize` flag for LLM-enhanced output using any provider.
+
+---
 
 ## Install
 
 ```bash
 npm install -g @smarthandoff/cli
-# or
-npx @smarthandoff/cli init
 ```
 
-Installs two binaries: `smarthandoff` and `shoff`.
+Creates two aliases: `smarthandoff` and `shoff`.
+
+---
 
 ## Quick start
 
 ```bash
-# Initialize in your project (run once)
+# 1. Initialize in your project (once per project)
 smarthandoff init
 
-# When you need to switch tools — copies prompt to clipboard, launches gemini
+# 2. When you need to switch tools:
 smarthandoff route --to gemini --launch
 
-# Or just hit your rate limit — fires automatically via hooks
+# Or let it fire automatically on rate limit (via Claude Code hooks set up by init)
 ```
+
+---
 
 ## Commands
 
 ### `smarthandoff init`
-Set up Smart Handoff in the current project. Detects installed tools, writes config, registers Claude Code hooks.
+
+Set up Smart Handoff in the current project. Detects installed AI tools, writes `.smarthandoff/config.yaml`, and registers Claude Code hooks that fire automatically when you hit a rate limit.
+
+```
+Options:
+  --target <tool>   Default target (gemini|codex|cursor|claude|chatgpt|generic)
+  --no-hooks        Skip Claude Code hooks registration
+```
 
 ```bash
 smarthandoff init
@@ -39,82 +56,244 @@ smarthandoff init --target codex
 smarthandoff init --no-hooks
 ```
 
+---
+
 ### `smarthandoff route`
-Snapshot → compress → deliver to target tool in one command.
+
+Snapshot the current session and deliver it to a target AI tool. This is the primary command.
+
+**What it does:**
+1. Reads your most recent Claude Code transcript
+2. Extracts: goal, files changed, decisions, blockers, next steps
+3. Merges with git context and Claude memory
+4. Compresses to the target tool's token budget
+5. Delivers (clipboard, file-write, or pipe depending on target)
+
+```
+Options:
+  --to <tool>                   Target: gemini | codex | cursor | claude | chatgpt | generic
+  --launch                      Copy prompt to clipboard and open the target CLI directly
+  --mode <mode>                 lean | rich | debug  (default: rich)
+  --budget <tokens>             Override token budget
+  --include-diffs               Include full git diffs in file sections
+  --preview                     Print the formatted briefing without delivering
+  --save-only                   Build and save handoff without delivering
+  --summary                     Print goal + blocker summary (use with --save-only)
+  --note <text>                 Inject a manual note into the handoff
+  --session-id <id>             Use a specific Claude session instead of the most recent
+  --summarize [provider/model]  LLM enhancement pass (see Summarization below)
+```
+
+**Examples:**
 
 ```bash
-# Standard delivery (copies formatted prompt to clipboard)
+# Standard delivery — copies formatted prompt to clipboard
 smarthandoff route --to gemini
 smarthandoff route --to codex
-smarthandoff route                              # auto-detect best available tool
+smarthandoff route --to claude
+smarthandoff route                          # auto-detect best available tool
 
-# --launch: copies to clipboard AND spawns the target CLI in your terminal
-smarthandoff route --to gemini --launch         # clipboard + spawns gemini --skip-trust
-smarthandoff route --to codex --launch          # clipboard + spawns codex
-smarthandoff route --to claude --launch         # clipboard + spawns claude
+# --launch: clipboard + spawn target CLI interactively (no API key needed)
+smarthandoff route --to gemini --launch     # opens gemini --skip-trust
+smarthandoff route --to codex --launch      # opens codex
+smarthandoff route --to claude --launch     # opens claude
 
-# Preview without delivering
+# Preview before delivering
 smarthandoff route --to gemini --preview
 
-# Save only (no delivery — replaces the old 'snapshot' command)
+# Save without delivering (useful as a checkpoint)
 smarthandoff route --save-only
-smarthandoff route --save-only --note "focus on auth module next"
+smarthandoff route --save-only --note "focus on the auth module next"
 smarthandoff route --save-only --summary
 
-# With LLM summarization pass
-smarthandoff route --to gemini --summarize              # auto-detect provider
-smarthandoff route --to gemini --summarize gemini       # explicit provider
+# Different modes
+smarthandoff route --to gemini --mode lean   # minimal output
+smarthandoff route --to gemini --mode debug  # 100K budget, no compression
+
+# With LLM summarization
+smarthandoff route --to gemini --summarize
+smarthandoff route --to gemini --summarize gemini
 smarthandoff route --to gemini --summarize gemini/gemini-2.5-flash
-smarthandoff route --to gemini --summarize claude-cli   # no API key needed
+smarthandoff route --to gemini --summarize claude-cli  # no API key needed
 ```
 
 **`--launch` behavior:**
-1. Formats the handoff for the target tool
-2. Copies the prompt to your clipboard
-3. Prints `✓ Handoff copied to clipboard — Paste it as your first message`
-4. Spawns the target CLI interactively in your terminal (full TTY)
 
-Supported `--launch` targets: `gemini`, `codex`, `claude`. Other targets fall back to printing a manual run command.
+When `--launch` is used:
+1. The handoff prompt is copied to your clipboard
+2. Terminal prints `✓ Handoff copied to clipboard`
+3. The target CLI is spawned interactively (full TTY — no pipe, no API key)
+4. You paste with Cmd+V as your first message
+
+| Target | CLI launched | Extra flags |
+|--------|-------------|-------------|
+| `gemini` | `gemini` | `--skip-trust` |
+| `codex` | `codex` | — |
+| `claude` | `claude` | — |
+| `cursor`, `chatgpt`, `generic` | — | Falls back to clipboard + manual run |
+
+**Expected output:**
+
+```
+⠋ Building handoff for gemini…
+✔ Session parsed · 2 goals, 8 files
+  Goal: Implement JWT refresh endpoint
+  Blocker: Tests failing on tokenRefresh.test.ts
+  Compressed: 4,821 tokens (budget: 50,000)
+
+Delivering to gemini...
+✓ Briefing copied to clipboard (4,821 tokens)
+
+  Run: gemini --skip-trust  — then paste with Cmd+V / Ctrl+V
+```
+
+---
 
 ### `smarthandoff resume`
-Deliver a previously saved handoff to any target. Does not re-read the transcript.
+
+Re-deliver a previously saved handoff to any target. Does not re-read the transcript — uses the already-extracted snapshot.
+
+```
+Options:
+  --id <handoffId>   Handoff ID to use (default: most recent)
+  --to <tool>        Target tool (default: generic)
+  --budget <tokens>  Override token budget
+  --copy             Force copy to clipboard
+  --print            Print to stdout instead of delivering
+```
 
 ```bash
 smarthandoff resume --to gemini
 smarthandoff resume --to codex
-smarthandoff resume --id shoff_1234567890_manual --to cursor
-smarthandoff resume --to claude --print         # print to stdout
-smarthandoff resume --to generic --budget 500   # custom token budget
+smarthandoff resume --id shoff_1777385087720_manual --to cursor
+smarthandoff resume --to claude --print
+smarthandoff resume --to gemini --budget 20000
 ```
 
+---
+
 ### `smarthandoff list`
-List all saved handoffs, or inspect a specific handoff's token allocation.
+
+List all saved handoffs, or inspect one in detail.
+
+```
+Options:
+  --limit <n>        Number to show (default: 10)
+  --inspect [id]     Show token allocation breakdown (default: most recent)
+  --target <tool>    Target for --inspect budget calculation (default: gemini)
+  --json             Dump full handoff JSON (use with --inspect)
+```
 
 ```bash
 smarthandoff list
-smarthandoff list --limit 3
-smarthandoff list --inspect                     # most recent
-smarthandoff list --inspect --target codex      # allocation for codex budget
-smarthandoff list --inspect --json              # dump full handoff JSON
+smarthandoff list --limit 5
+smarthandoff list --inspect                          # most recent
+smarthandoff list --inspect shoff_1777385087720_manual
+smarthandoff list --inspect --target codex           # codex budget view
+smarthandoff list --inspect --json                   # raw JSON
 ```
+
+**Example output:**
+
+```
+SMART HANDOFFS — /Users/you/my-project
+
+  shoff_1777385087720_manual  2 hours ago   Implement JWT refresh endpoint
+  shoff_1777385162745_manual  1 hour ago    Fix budget allocator scaling
+  shoff_1777385231291_manual  30 mins ago   Add decision noise filters
+
+Total: 3 handoffs
+Run: smarthandoff resume --id <id> --to <tool>
+```
+
+```
+HANDOFF shoff_1777385087720_manual
+Created: 2026-04-29T12:34:56Z · Source: claude-code
+
+TOKEN ALLOCATION (target: gemini, budget: 50,000)
+  Goal         ████░░░░░░░░░░░░░░░░ ~4,000 tokens  (1 goals)
+  Decisions    ██░░░░░░░░░░░░░░░░░░ ~2,500 tokens  (3 decisions)
+  Files        ███████░░░░░░░░░░░░░ ~7,000 tokens  (8 files)
+  ...
+
+CONFIDENCE SCORES
+  Overall:  82%
+```
+
+---
 
 ## Summarization
 
-Add `--summarize` to any `route` command for an optional LLM pass that rewrites fields using a language model:
+Add `--summarize` to any `route` command for an LLM pass that rewrites extracted fields into cleaner prose:
 
 ```bash
+# Auto-detect provider (tries claude-cli first, then env vars)
 smarthandoff route --to gemini --summarize
 
-# Explicit provider (all require their respective API key env var)
-smarthandoff route --to gemini --summarize anthropic    # ANTHROPIC_API_KEY
-smarthandoff route --to gemini --summarize gemini       # GEMINI_API_KEY
-smarthandoff route --to gemini --summarize openai       # OPENAI_API_KEY
-smarthandoff route --to gemini --summarize claude-cli   # no key — uses installed claude
+# Explicit provider — requires the matching env var
+GEMINI_API_KEY=...    smarthandoff route --to gemini --summarize gemini
+OPENAI_API_KEY=...    smarthandoff route --to gemini --summarize openai
+ANTHROPIC_API_KEY=... smarthandoff route --to gemini --summarize anthropic
+
+# Uses your existing Claude Code login — no API key needed
+smarthandoff route --to gemini --summarize claude-cli
+
+# Specific model
+smarthandoff route --to gemini --summarize gemini/gemini-2.5-flash
 ```
 
-## Full docs
+---
 
-See [github.com/Manan-jn/smarthandoff](https://github.com/Manan-jn/smarthandoff) for the complete README, architecture, and Claude Code plugin docs.
+## Target tools and token budgets
+
+| Target | Budget | Format | Delivery |
+|--------|--------|--------|----------|
+| `gemini` | 50,000 | Markdown sections | Clipboard + GEMINI.md |
+| `claude` | 15,000 | Session resume format | Clipboard |
+| `codex` | 8,000 | TASK:/FILE: prefix style | Clipboard + AGENTS.md |
+| `cursor` | 12,000 | MDC rule file | `.cursor/rules/handoff.mdc` |
+| `chatgpt` | 12,000 | Two-part system+message | Clipboard (two pastes) |
+| `generic` | 10,000 | Plain markdown | Clipboard |
+
+---
+
+## Claude Code plugin
+
+For in-editor UX (slash commands + automatic hooks), install the Claude Code plugin:
+
+```bash
+# Install the plugin
+claude mcp add smart-handoff npx @smarthandoff/cli plugin-server
+
+# Or use the standalone install script
+curl -fsSL https://raw.githubusercontent.com/Manan-jn/smarthandoff/main/plugins/claude-code/install.sh | bash
+```
+
+The plugin adds:
+- `/handoff` skill — trigger a handoff from inside Claude
+- `StopFailure` hook — auto-routes when Claude hits a rate limit
+- `PreCompact` hook — saves a checkpoint before context compression
+
+---
+
+## Storage
+
+Everything is stored locally in `.smarthandoff/` inside your project:
+
+```
+.smarthandoff/
+  config.yaml          ← project config (target, collectors)
+  latest.json          ← most recent handoff (JSON)
+  latest.md            ← most recent handoff (formatted for target)
+  handoffs/
+    shoff_<id>.json    ← all saved handoffs
+```
+
+---
+
+## Full documentation
+
+See [github.com/Manan-jn/smarthandoff](https://github.com/Manan-jn/smarthandoff) for full docs, architecture, and the `@smarthandoff/core` library API.
 
 ## License
 

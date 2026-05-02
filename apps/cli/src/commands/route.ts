@@ -6,6 +6,8 @@ import { deliver, launchCli } from '../deliver/index.js';
 import { autoDetectTarget, detectTools } from '../detect/toolDetector.js';
 import { buildHandoff } from './_buildHandoff.js';
 import { emitEvent } from '../analytics.js';
+import ora from 'ora';
+import chalk from 'chalk';
 
 export const routeCommand = new Command('route')
   .description('Snapshot current session and deliver to target tool')
@@ -28,25 +30,39 @@ export const routeCommand = new Command('route')
 
     // --save-only: build + save, no delivery
     if (options.saveOnly) {
-      console.log('\nBuilding handoff...');
-      const handoff = await buildHandoff(config, {
-        sessionId: options.sessionId as string | undefined,
-        mode,
-        includeDiffs: options.includeDiffs as boolean,
-        note: options.note as string | undefined,
-      });
+      const spinner = ora('Building handoff…').start();
+      let handoff;
+      try {
+        handoff = await buildHandoff(config, {
+          sessionId: options.sessionId as string | undefined,
+          mode,
+          includeDiffs: options.includeDiffs as boolean,
+          note: options.note as string | undefined,
+        });
+        spinner.succeed(chalk.green('Handoff built') + chalk.dim(` · ${handoff.goals.length} goals, ${handoff.filesChanged.length} files`));
+      } catch (err) {
+        spinner.fail('Failed to build handoff');
+        throw err;
+      }
 
       let finalHandoff = handoff;
       const sumOpts = parseSummarize(options.summarize as boolean | string | undefined);
       if (sumOpts !== null) {
         const displayProvider = typeof options.summarize === 'string' ? options.summarize : 'auto';
-        console.log(`  Running LLM summarization (${displayProvider})...`);
-        finalHandoff = await summarize(handoff, {
-          provider: sumOpts.provider as import('@smarthandoff/core').ProviderName | undefined,
-          model: sumOpts.model,
-        });
-        if (finalHandoff !== handoff) {
-          console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
+        const sumSpinner = ora(`Enhancing with ${displayProvider}…`).start();
+        try {
+          finalHandoff = await summarize(handoff, {
+            provider: sumOpts.provider as import('@smarthandoff/core').ProviderName | undefined,
+            model: sumOpts.model,
+          });
+          if (finalHandoff !== handoff) {
+            sumSpinner.succeed(chalk.green('Enhanced') + chalk.dim(` · ${finalHandoff.goals[0]?.title ?? 'no goal'}`));
+          } else {
+            sumSpinner.warn(chalk.yellow('Summarization skipped') + chalk.dim(' (provider unavailable)'));
+          }
+        } catch {
+          sumSpinner.warn(chalk.yellow('Summarization failed') + chalk.dim(' — continuing without LLM pass'));
+          finalHandoff = handoff;
         }
       }
 
@@ -54,15 +70,16 @@ export const routeCommand = new Command('route')
       await fs.writeFile(`.smarthandoff/handoffs/${finalHandoff.id}.json`, JSON.stringify(finalHandoff, null, 2));
       await fs.writeFile('.smarthandoff/latest.json', JSON.stringify(finalHandoff, null, 2));
 
-      console.log(`✓ Handoff saved: ${finalHandoff.id}`);
-      console.log(`  Goals:     ${finalHandoff.goals.length}`);
-      console.log(`  Decisions: ${finalHandoff.decisions.length}`);
-      console.log(`  Files:     ${finalHandoff.filesChanged.length}`);
-      console.log(`  Blockers:  ${finalHandoff.blockers.length}`);
-      console.log(`  Tokens:    ~${finalHandoff.rawTokenCount.toLocaleString()} raw`);
+      console.error('');
+      console.error(chalk.bold('✓ Handoff saved') + chalk.dim(` ${finalHandoff.id}`));
+      console.error(chalk.dim(`  Goals:     ${finalHandoff.goals.length}`));
+      console.error(chalk.dim(`  Decisions: ${finalHandoff.decisions.length}`));
+      console.error(chalk.dim(`  Files:     ${finalHandoff.filesChanged.length}`));
+      console.error(chalk.dim(`  Blockers:  ${finalHandoff.blockers.length}`));
+      console.error(chalk.dim(`  Tokens:    ~${finalHandoff.rawTokenCount.toLocaleString()} raw`));
       if (options.summary) {
-        if (finalHandoff.goals[0]) console.log(`  Goal:    ${finalHandoff.goals[0].title}`);
-        if (finalHandoff.blockers[0]) console.log(`  Blocker: ${finalHandoff.blockers[0].description.slice(0, 80)}`);
+        if (finalHandoff.goals[0]) console.error(chalk.dim(`  Goal:    `) + finalHandoff.goals[0].title);
+        if (finalHandoff.blockers[0]) console.error(chalk.dim(`  Blocker: `) + finalHandoff.blockers[0].description.slice(0, 80));
       }
       return;
     }
@@ -70,40 +87,60 @@ export const routeCommand = new Command('route')
     // Full route: build + save + deliver
     let target: TargetTool;
     if (!options.to) {
+      const detectSpinner = ora('Detecting AI tools…').start();
       const detected = await detectTools();
-      console.log('\nDetecting available AI tools...');
-      for (const tool of ['gemini', 'codex', 'cursor', 'claude']) {
-        console.log(`  ${detected.includes(tool) ? '✓' : '✗'} ${tool}`);
-      }
+      const lines = (['gemini', 'codex', 'cursor', 'claude'] as const).map(
+        t => `  ${detected.includes(t) ? chalk.green('✓') : chalk.dim('✗')} ${t}`
+      );
+      detectSpinner.stop();
+      console.error('\n' + lines.join('\n'));
       target = (await autoDetectTarget()) as TargetTool;
-      console.log(`\n  Recommendation: ${target}`);
+      console.error(chalk.dim('\n  Recommendation: ') + chalk.bold(target));
     } else {
       target = options.to as TargetTool;
     }
 
-    console.log(`\nBuilding handoff for ${target}...`);
-    const handoff = await buildHandoff(config, {
-      sessionId: options.sessionId as string | undefined,
-      mode,
-      includeDiffs: options.includeDiffs as boolean,
-      note: options.note as string | undefined,
-    });
-
-    console.log(`  ✓ Session parsed (${handoff.goals.length} goals, ${handoff.filesChanged.length} files)`);
-    if (handoff.goals[0]) console.log(`  ✓ Goal: ${handoff.goals[0].title}`);
-    if (handoff.blockers[0]) console.log(`  ✓ Blocker: ${handoff.blockers[0].description.slice(0, 60)}`);
+    const spinner = ora(`Building handoff for ${chalk.bold(target)}…`).start();
+    let handoff;
+    try {
+      handoff = await buildHandoff(config, {
+        sessionId: options.sessionId as string | undefined,
+        mode,
+        includeDiffs: options.includeDiffs as boolean,
+        note: options.note as string | undefined,
+      });
+      const goalTitle = handoff.goals[0]?.title?.slice(0, 55) ?? '';
+      spinner.succeed(
+        chalk.green('Session parsed') +
+        chalk.dim(` · ${handoff.goals.length} goals, ${handoff.filesChanged.length} files`) +
+        (goalTitle ? '\n  ' + chalk.dim('Goal: ') + goalTitle : '')
+      );
+      if (handoff.blockers[0]) {
+        console.error('  ' + chalk.dim('Blocker: ') + handoff.blockers[0].description.slice(0, 60));
+      }
+    } catch (err) {
+      spinner.fail('Failed to build handoff');
+      throw err;
+    }
 
     let finalHandoff = handoff;
     const sumOpts = parseSummarize(options.summarize as boolean | string | undefined);
     if (sumOpts !== null) {
       const displayProvider = typeof options.summarize === 'string' ? options.summarize : 'auto';
-      console.log(`\n  Running LLM summarization (${displayProvider})...`);
-      finalHandoff = await summarize(handoff, {
-        provider: sumOpts.provider as import('@smarthandoff/core').ProviderName | undefined,
-        model: sumOpts.model,
-      });
-      if (finalHandoff !== handoff) {
-        console.log(`  ✓ Enhanced: ${finalHandoff.goals[0]?.title ?? 'no goal'}`);
+      const sumSpinner = ora(`Enhancing with ${displayProvider}…`).start();
+      try {
+        finalHandoff = await summarize(handoff, {
+          provider: sumOpts.provider as import('@smarthandoff/core').ProviderName | undefined,
+          model: sumOpts.model,
+        });
+        if (finalHandoff !== handoff) {
+          sumSpinner.succeed(chalk.green('Enhanced') + chalk.dim(` · ${finalHandoff.goals[0]?.title ?? 'no goal'}`));
+        } else {
+          sumSpinner.warn(chalk.yellow('Summarization skipped') + chalk.dim(' (provider unavailable)'));
+        }
+      } catch {
+        sumSpinner.warn(chalk.yellow('Summarization failed') + chalk.dim(' — continuing without LLM pass'));
+        finalHandoff = handoff;
       }
     }
 
@@ -119,27 +156,32 @@ export const routeCommand = new Command('route')
     });
 
     const displayBudget = effectiveBudget ?? TOOL_BUDGETS[target] ?? 10_000;
-    console.log(`  ✓ Compressed: ${output.tokenCount.toLocaleString()} tokens (budget: ${displayBudget.toLocaleString()})`);
+    console.error(
+      '  ' + chalk.dim('Compressed: ') +
+      chalk.bold(output.tokenCount.toLocaleString()) +
+      chalk.dim(` tokens (budget: ${displayBudget.toLocaleString()})`)
+    );
 
     if (options.preview) {
-      console.log('\n--- PREVIEW ---');
-      console.log(output.text);
-      console.log('--- END PREVIEW ---');
+      console.error('\n' + chalk.dim('─'.repeat(50)));
+      process.stdout.write(output.text);
+      console.error('\n' + chalk.dim('─'.repeat(50)));
       return;
     }
 
-    console.log(`\nDelivering to ${target}...`);
-    // When --launch is set, suppress stdout/clipboard output — the CLI takes over.
+    // When --launch is set, suppress stdout/clipboard output — launchCli handles delivery.
     await deliver(output, { suppressOutput: !!options.launch });
 
     if (options.launch) {
       const launched = await launchCli(target, output.text);
       if (!launched) {
-        console.error(`  ✗ --launch: '${target}' CLI not found in PATH or not launchable`);
-        if (output.launchCommand) console.log(`  Run manually: ${output.launchCommand}`);
+        console.error(chalk.red(`  ✗ --launch: '${target}' CLI not found in PATH or not supported`));
+        if (output.launchCommand) {
+          console.error(chalk.dim(`  Run manually: `) + output.launchCommand + chalk.dim('  (paste with Cmd+V / Ctrl+V)'));
+        }
       }
     } else if (output.launchCommand) {
-      console.log(`\nRun: ${output.launchCommand}`);
+      console.error('\n  ' + chalk.dim('Run: ') + chalk.bold(output.launchCommand) + chalk.dim('  — then paste with Cmd+V / Ctrl+V'));
     }
 
     await emitEvent({

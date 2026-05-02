@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { toAdapter, validateHandoff, type TargetTool, type Handoff } from '@smarthandoff/core';
 import { deliver } from '../deliver/index.js';
+import chalk from 'chalk';
 
 export const resumeCommand = new Command('resume')
   .description('Generate a target-tool prompt from a saved handoff')
@@ -17,7 +18,7 @@ export const resumeCommand = new Command('resume')
       : await loadLatestHandoff();
 
     if (!handoff) {
-      console.error('No handoff found. Run: smarthandoff route --save-only first.');
+      console.error(chalk.red('No handoff found.') + chalk.dim(' Run: smarthandoff route --save-only first.'));
       process.exit(1);
     }
 
@@ -28,8 +29,8 @@ export const resumeCommand = new Command('resume')
 
     await deliver(output, { forceClipboard: options.copy as boolean, forcePrint: options.print as boolean });
 
-    if (output.launchCommand) {
-      console.error(`\nRun: ${output.launchCommand}`);
+    if (output.launchCommand && !options.print) {
+      console.error('\n  ' + chalk.dim('Run: ') + chalk.bold(output.launchCommand) + chalk.dim('  — then paste with Cmd+V / Ctrl+V'));
     }
   });
 

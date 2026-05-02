@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { validateHandoff, getRelativeTime, allocateBudget, TOOL_BUDGETS, type Handoff, type TargetTool } from '@smarthandoff/core';
+import chalk from 'chalk';
 
 export const listCommand = new Command('list')
   .description('List all saved handoffs for this project')
@@ -10,20 +11,19 @@ export const listCommand = new Command('list')
   .option('--target <tool>', 'target tool for --inspect allocation (default: gemini)', 'gemini')
   .option('--json', 'dump full handoff JSON (use with --inspect)')
   .action(async (options) => {
-    // --inspect mode: show token allocation for a specific handoff
     if (options.inspect !== undefined) {
       const id = typeof options.inspect === 'string' ? options.inspect : undefined;
       const handoff = id ? await loadHandoffById(id) : await loadLatestHandoff();
 
       if (!handoff) {
-        console.error(id
+        console.error(chalk.red(id
           ? `No handoff found with id: ${id}`
-          : 'No handoffs found. Run: smarthandoff route --save-only');
+          : 'No handoffs found. Run: smarthandoff route --save-only'));
         process.exit(1);
       }
 
       if (options.json) {
-        console.log(JSON.stringify(handoff, null, 2));
+        process.stdout.write(JSON.stringify(handoff, null, 2) + '\n');
         return;
       }
 
@@ -31,16 +31,17 @@ export const listCommand = new Command('list')
       const budgets = allocateBudget(handoff, target);
       const totalBudget = TOOL_BUDGETS[target] ?? 10_000;
 
-      console.log(`\nHANDOFF: ${handoff.id}`);
-      console.log(`Created: ${handoff.createdAt} | Source: ${handoff.sources[0]?.tool ?? 'unknown'}`);
+      console.error('');
+      console.error(chalk.bold('HANDOFF') + ' ' + chalk.dim(handoff.id));
+      console.error(chalk.dim(`Created: ${handoff.createdAt} · Source: ${handoff.sources[0]?.tool ?? 'unknown'}`));
 
-      console.log('\nEXTRACTION SOURCES');
+      console.error('\n' + chalk.bold('EXTRACTION SOURCES'));
       for (const source of handoff.sources) {
-        console.log(`  ├── ${source.tool}: session ${source.sessionId?.slice(0, 8) ?? 'unknown'}`);
+        console.error(chalk.dim(`  ├── ${source.tool}: session ${source.sessionId?.slice(0, 8) ?? 'unknown'}`));
       }
-      console.log(`  └── Raw token count: ~${handoff.rawTokenCount.toLocaleString()}`);
+      console.error(chalk.dim(`  └── Raw token count: ~${handoff.rawTokenCount.toLocaleString()}`));
 
-      console.log(`\nTOKEN ALLOCATION (target: ${target}, budget: ${totalBudget.toLocaleString()})`);
+      console.error(`\n${chalk.bold('TOKEN ALLOCATION')} ${chalk.dim(`(target: ${target}, budget: ${totalBudget.toLocaleString()})`)}`);
       const sections = [
         { name: 'Goal',       budget: budgets.goal,         count: handoff.goals.length,        unit: 'goals' },
         { name: 'Decisions',  budget: budgets.decisions,    count: handoff.decisions.length,    unit: 'decisions' },
@@ -50,15 +51,21 @@ export const listCommand = new Command('list')
         { name: 'CLAUDE.md',  budget: budgets.claudeMd,     count: handoff.context.claudeMdContent ? 1 : 0, unit: 'files' },
       ];
       for (const s of sections) {
-        const barLen = Math.min(20, Math.floor((s.budget / totalBudget) * 20));
-        const bar = '█'.repeat(barLen).padEnd(20, '░');
-        console.log(`  ${s.name.padEnd(12)} ${bar} ~${Math.floor(s.budget).toLocaleString()} tokens  (${s.count} ${s.unit})`);
+        const filled = Math.min(20, Math.floor((s.budget / totalBudget) * 20));
+        const bar = chalk.cyan('█'.repeat(filled)) + chalk.dim('░'.repeat(20 - filled));
+        const tokens = chalk.bold(`~${Math.floor(s.budget).toLocaleString()}`) + chalk.dim(' tokens');
+        const count = chalk.dim(`(${s.count} ${s.unit})`);
+        console.error(`  ${s.name.padEnd(12)} ${bar} ${tokens}  ${count}`);
       }
 
-      console.log('\nCONFIDENCE SCORES');
-      console.log(`  Overall:  ${(handoff.extractionConfidence * 100).toFixed(0)}%`);
+      console.error('\n' + chalk.bold('CONFIDENCE SCORES'));
+      const pct = handoff.extractionConfidence * 100;
+      const overallColor = pct >= 80 ? chalk.green : pct >= 50 ? chalk.yellow : chalk.red;
+      console.error(`  Overall:  ${overallColor(`${pct.toFixed(0)}%`)}`);
       for (const d of handoff.decisions) {
-        console.log(`  Decision: ${(d.confidence * 100).toFixed(0)}%  "${d.summary.slice(0, 60)}"`);
+        const dp = d.confidence * 100;
+        const dColor = dp >= 80 ? chalk.green : dp >= 50 ? chalk.yellow : chalk.red;
+        console.error(`  Decision: ${dColor(`${dp.toFixed(0)}%`)}  ${chalk.dim(`"${d.summary.slice(0, 60)}"`)}`);
       }
       return;
     }
@@ -67,7 +74,7 @@ export const listCommand = new Command('list')
     const handoffs = await loadAllHandoffs();
 
     if (handoffs.length === 0) {
-      console.log('No handoffs found. Run: smarthandoff route --save-only');
+      console.error(chalk.dim('No handoffs found. Run: smarthandoff route --save-only'));
       return;
     }
 
@@ -77,16 +84,20 @@ export const listCommand = new Command('list')
 
     const idWidth = Math.max(...recent.map(h => h.id.length));
 
-    console.log(`\nSMART HANDOFFS — ${process.cwd()}\n`);
+    console.error('\n' + chalk.bold('SMART HANDOFFS') + chalk.dim(` — ${process.cwd()}`) + '\n');
 
     for (const h of recent) {
       const age = getRelativeTime(h.createdAt);
-      const title = h.goals[0]?.title?.slice(0, 50) || 'No goal';
-      console.log(`  ${h.id.padEnd(idWidth)}  ${age.padEnd(12)}  ${title}`);
+      const title = h.goals[0]?.title?.slice(0, 50) || chalk.dim('No goal');
+      console.error(
+        '  ' + chalk.dim(h.id.padEnd(idWidth)) +
+        '  ' + chalk.dim(age.padEnd(12)) +
+        '  ' + title
+      );
     }
 
-    console.log(`\nTotal: ${handoffs.length} handoffs`);
-    console.log('Run: smarthandoff resume --id <id> --to <tool>');
+    console.error('\n' + chalk.dim(`Total: ${handoffs.length} handoffs`));
+    console.error(chalk.dim('Run: smarthandoff resume --id <id> --to <tool>'));
   });
 
 async function loadAllHandoffs(): Promise<Handoff[]> {

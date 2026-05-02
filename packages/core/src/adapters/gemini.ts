@@ -121,7 +121,7 @@ export function toGemini(handoff: Handoff, options: AdapterOptions = {}): Adapte
       content: geminiMd,
       isTemporary: false,
     }],
-    launchCommand: `cat .smarthandoff/latest.md | gemini --skip-trust -p "You are resuming a coding task. Context is above."`,
+    launchCommand: `gemini --skip-trust`,
   };
 }
 

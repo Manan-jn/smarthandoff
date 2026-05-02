@@ -1,6 +1,6 @@
 {
   "name": "@smarthandoff/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Smart Handoff core library — handoff schema, builders, compression, adapters",
   "type": "module",
   "exports": {
@@ -31,9 +31,15 @@
     "openai": ">=4.0.0"
   },
   "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": { "optional": true },
-    "@google/generative-ai": { "optional": true },
-    "openai": { "optional": true }
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@google/generative-ai": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

@@ -80,6 +80,6 @@ export function toCodex(handoff: Handoff, options: AdapterOptions = {}): Adapter
       isTemporary: true,
     }],
     filesToCleanup: ['AGENTS.md'],
-    launchCommand: `cat .smarthandoff/latest.md | codex exec "Fix the failing issue. Context above." --sandbox workspace-write`,
+    launchCommand: `codex`,
   };
 }
