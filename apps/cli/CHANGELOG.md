@@ -1,5 +1,15 @@
 # @smarthandoff/cli
 
+## 0.2.1
+
+### Patch Changes
+
+- fix: read version from package.json at runtime instead of hardcoding it
+
+  The v0.2.0 bundle had "0.1.0" baked in because Commander read the version
+  string at build time. Now uses createRequire to read package.json at runtime
+  so `smarthandoff --version` always reflects the published version.
+
 ## 0.2.0
 
 ### Minor Changes
