@@ -1,5 +1,11 @@
 # @smarthandoff/core
 
+## 0.2.1
+
+### Patch Changes
+
+- docs: remove unimplemented plugin-server, fix adapter table, clean up README
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @smarthandoff/cli
 
+## 0.2.2
+
+### Patch Changes
+
+- docs: remove unimplemented plugin-server, fix adapter table, clean up README
+- Updated dependencies
+  - @smarthandoff/core@0.2.1
+
 ## 0.2.1
 
 ### Patch Changes
