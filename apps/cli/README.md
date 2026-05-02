@@ -257,22 +257,14 @@ smarthandoff route --to gemini --summarize gemini/gemini-2.5-flash
 
 ---
 
-## Claude Code plugin
+## Claude Code hooks
 
-For in-editor UX (slash commands + automatic hooks), install the Claude Code plugin:
+`smarthandoff init` registers two hooks automatically:
 
-```bash
-# Install the plugin
-claude mcp add smart-handoff npx @smarthandoff/cli plugin-server
+- **StopFailure** — fires when Claude hits a rate limit, auto-routes your session
+- **PreCompact** — saves a lean checkpoint before context compression
 
-# Or use the standalone install script
-curl -fsSL https://raw.githubusercontent.com/Manan-jn/smarthandoff/main/plugins/claude-code/install.sh | bash
-```
-
-The plugin adds:
-- `/handoff` skill — trigger a handoff from inside Claude
-- `StopFailure` hook — auto-routes when Claude hits a rate limit
-- `PreCompact` hook — saves a checkpoint before context compression
+Both run `smarthandoff` via shell and require the CLI to be installed globally.
 
 ---
 

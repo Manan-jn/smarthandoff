@@ -36,7 +36,7 @@ const handoff = merge([sessionPartial, gitPartial], {
 const output = toAdapter(handoff, 'gemini');
 console.log(output.text);          // markdown briefing ready to paste
 console.log(output.tokenCount);    // estimated token count
-console.log(output.launchCommand); // "gemini --skip-trust"
+console.log(output.launchCommand); // e.g. "gemini --skip-trust", "codex", "claude"
 ```
 
 ---
@@ -157,7 +157,7 @@ type TargetTool = 'gemini' | 'codex' | 'cursor' | 'claude' | 'chatgpt' | 'generi
 | `gemini` | 50,000 | Markdown with `## CONTEXT` header + sections |
 | `claude` | 15,000 | `## Session resume` format |
 | `codex` | 8,000 | `TASK:`/`FILE:` prefix style |
-| `cursor` | 12,000 | MDC rule file for `.cursor/rules/` |
+| `cursor` | 12,000 | MDC rule file written to `.cursor/rules/handoff.mdc` |
 | `chatgpt` | 12,000 | Two-part system prompt + user message |
 | `generic` | 10,000 | Plain markdown |
 
