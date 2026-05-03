@@ -1,7 +1,26 @@
 node_modules/
 dist/
-.smarthandoff/cache/
-.smarthandoff/events.jsonl
-.smarthandoff/latest.md
+
+# Smart Handoff runtime data
+.smarthandoff/
+
+# Generated context files
+GEMINI.md
+AGENTS.md
+claude_temp.json
+
+# E2e logs and internal planning docs
+e2e-*.log
+publishplan.md
+smart-handoff-implementation-plan.md
+docs/superpowers/
+
+# IDE
+.cursor/
+
+# Build / turbo
 *.tsbuildinfo
 .turbo/
+
+# Changesets (internal release tooling)
+.changeset/
